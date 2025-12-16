@@ -4,13 +4,13 @@
 Collection of tools that can be used together with the MMI <-> PIN2DMD bridge
 
 Prerequisites for Pi Zero 2W:
-- OS like DietPi installed
+- OS like DietPi Bookworm installed
 - uart activated (enable_uart=1 in config.txt)
 - hardware uart (dev/ttyAMA0) mapped to UART pins. (dtoverlay=disable-bt in config.txt)
 - uart console disabled (remove the console= part from cmdline.txt)
 - spi interface activated (e.g. dtparam=spi=on in config.txt)
 - spi message size set to 8192 (spidev.bufsiz=8192 added to cmdline.txt)
-- pigpio installed (apt install pigpio-tools)
+- pigpio installed (apt install pigpio)
 
 ## dmd_player - playback pinmame txt dump files on PIN2DMD
 
