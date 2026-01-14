@@ -32,6 +32,9 @@ $(BUILD_DIR)/spi_loop: spi_loop.o pin2mmi.o log.o
 $(BUILD_DIR)/reset: reset.o pin2mmi.o log.o
 	$(CC) -o $(BUILD_DIR)/$@ $^ $(LDFLAGS)
 
+$(BUILD_DIR)/spi-serum: spi-serum.o pin2mmi.o log.o
+	$(CC) -o $(BUILD_DIR)/$@ $^ $(LDFLAGS)
+
 %.o: %.c
 	$(CC) -c $< -o $@
 

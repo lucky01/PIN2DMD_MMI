@@ -44,5 +44,19 @@ Options:
   -l <loglevel>                  Set log level (0-5)
 ```
 
-## reset - reset PIN2DMD
+## spi-serum Usage
+
+```
+Usage: spi-serum [options] <altcolor-path> <rom-name>
+
+Options:
+  -x                                Enable HD (64-line) output mode
+  -d                                Dump serum frames as hex to stdout
+  -i <IgnoreUnknownFramesTimeout>   Set ignore unknown frames timeout (ms). default dont set
+  -m <MaximumUnknownFramesToSkip>   Set maximum unknown frames to skip. default dont set
+  -w <width>                        Set DMD width (default: 128)
+  -h <height>                       Set DMD height (default: 32)
+  -r <lines-to-request>             Set lines to request for serum (32 or 64 (HD), default: 32)
+  -l <loglevel>                     Set log level (0-5)
+  -f <dump-file>                    Read frames from given file instead of SPI input
 
