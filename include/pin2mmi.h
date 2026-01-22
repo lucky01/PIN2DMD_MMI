@@ -130,6 +130,7 @@ extern char UIDString[16];
 extern MMI_STATUS_t Mmi_Status;
 extern char versionString[6];
 extern DeviceType deviceType;
+extern int uart_fd, spi_fd;
 
 extern int RX_BUFFER_SIZE;
 extern int DISPLAYBUFFER_SIZE;

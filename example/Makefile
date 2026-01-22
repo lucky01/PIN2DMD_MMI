@@ -3,6 +3,7 @@ HOME_DIR = $(HOME)
 LDFLAGS = -lpigpio
 
 BUILD_DIR = ../build
+INCDIR = ../include
 
 SRCS = pin2mmi.src log.c frame_reader.c
 OBJS = $(SRCS:.c=.o)
