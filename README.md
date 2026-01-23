@@ -59,7 +59,7 @@ Options:
   -r <lines-to-request>             Set lines to request for serum (32 or 64 (HD), default: 32)
   -l <loglevel>                     Set log level (0-5)
   -f <dump-file>                    Read frames from given file instead of SPI input
-
+```
 
 ## License
 
