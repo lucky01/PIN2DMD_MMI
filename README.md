@@ -60,3 +60,7 @@ Options:
   -l <loglevel>                     Set log level (0-5)
   -f <dump-file>                    Read frames from given file instead of SPI input
 
+
+## License
+
+This project is licensed under the GNU General Public License v2.0 - see the [LICENSE](LICENSE) file for details.
