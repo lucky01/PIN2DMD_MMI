@@ -10,9 +10,10 @@ cmake --build build
 ```
 
 ## Compiling spi-serum
-With libserum folder next to the PIN2DMD_MMI folder execute
+```With libserum folder next to the PIN2DMD_MMI folder execute
 chmod 755 build-serum.sh
 ./build-serum.sh
+```
 
 ## spi-serum Usage
 
