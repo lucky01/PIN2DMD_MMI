@@ -15,6 +15,7 @@
 #include "pin2mmi.h"
 #include "serum-decode.h"
 #include <getopt.h>
+#include <pthread.h>
 
 // 6-bit CIE 1931 lookup table
 // Maps 8-bit input (0-255) to 6-bit output (0-63)
@@ -43,6 +44,128 @@ int32_t millis( void ) {
 	struct timeval tv;
 	gettimeofday( &tv, NULL );
 	return (int32_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
+}
+
+typedef struct {
+    int spi_fd;
+    uint8_t *rx_buffer;
+    uint8_t *tx_buffer;
+    pthread_mutex_t lock;
+    pthread_cond_t signal;
+	int is_running;
+} spi_transfer_t;
+
+uint32_t spi_speed = 22000000; // 20 MHz
+uint8_t spi_bits = 8;
+
+void *spi_background_transfer( void *arg ) {
+	
+	LOGTRACE( "start transfer of %d bytes", DISPLAYBUFFER_SIZE );
+	spi_transfer_t *transfer = (spi_transfer_t *)arg;
+	
+	pthread_mutex_lock(&transfer->lock);
+	transfer->is_running = 1;
+	pthread_mutex_unlock(&transfer->lock);
+	
+	static uint8_t* txbuf = NULL;
+	static uint8_t* spitxbuf = NULL;
+	static uint8_t* spirxbuf = NULL;
+	
+	// only allocate once and reuse the buffer
+	if( txbuf == NULL )
+		txbuf = (uint8_t*)malloc( DISPLAYBUFFER_SIZE );
+	if( spirxbuf == NULL )
+		spirxbuf = (uint8_t*)malloc( CHUNK_SIZE );
+	if( spitxbuf == NULL )
+		spitxbuf = (uint8_t*)malloc( CHUNK_SIZE );
+	memcpy( txbuf, transfer->tx_buffer, DISPLAYBUFFER_SIZE );
+	memset( spirxbuf, 0, CHUNK_SIZE );
+	memset( spitxbuf, 0, CHUNK_SIZE );
+	
+	size_t total_received = 0;
+
+	struct spi_ioc_transfer tr;
+	tr.speed_hz = spi_speed;
+	tr.bits_per_word = spi_bits;
+	tr.delay_usecs = 0;
+	tr.len = CHUNK_SIZE;
+	tr.rx_buf = (unsigned long)spirxbuf;
+	tr.tx_buf = (unsigned long)spitxbuf;
+	tr.pad = 0;
+	tr.tx_nbits = 0;
+	tr.rx_nbits = 0;
+
+	while( total_received < DISPLAYBUFFER_SIZE ) {
+		if (transfer->tx_buffer != NULL){
+			memcpy( spitxbuf, txbuf + total_received, CHUNK_SIZE );
+		}
+
+		// Perform SPI transfer
+		int ret = ioctl( spi_fd, SPI_IOC_MESSAGE( 1 ), tr );
+		if( ret < 0 ) {
+			LOGERROR( "spi transfer failed" );
+			exit( 1 );
+		}
+		if( ( transfer->rx_buffer != NULL && total_received >= RX_BUFFER_SIZE ) && ( total_received < 2 * RX_BUFFER_SIZE ) ) {
+			memcpy( transfer->rx_buffer + ( total_received - RX_BUFFER_SIZE ), spirxbuf, CHUNK_SIZE );
+			pthread_mutex_lock(&transfer->lock);
+			pthread_cond_signal(&transfer->signal);
+			pthread_mutex_unlock(&transfer->lock);
+		}
+		total_received += CHUNK_SIZE;
+	}
+	pthread_mutex_lock(&transfer->lock);
+    transfer->is_running = 0;
+	pthread_cond_signal(&transfer->signal);
+    pthread_mutex_unlock(&transfer->lock);
+	;
+	LOGTRACE( "transfer complete");
+	return NULL;
+}
+
+spi_transfer_t *spi_transfer_create(uint8_t* txBuffer, uint8_t* rxBuffer) {
+    spi_transfer_t *transfer = (spi_transfer_t*) malloc(sizeof(spi_transfer_t));
+    if (!transfer) {
+        perror("memory allocation error");
+        return NULL;
+    }
+	
+	transfer->rx_buffer = rxBuffer;
+	transfer->tx_buffer = txBuffer;
+	
+	transfer->is_running = 0;
+    
+    pthread_mutex_init(&transfer->lock, NULL);
+    pthread_cond_init(&transfer->signal, NULL);
+    
+    return transfer;
+}
+
+
+int spi_transfer_start(spi_transfer_t *transfer, pthread_t *thread) {
+    return pthread_create(thread, NULL, spi_background_transfer, transfer);
+}
+
+void spi_wait_for_signal(spi_transfer_t *transfer) {
+    pthread_mutex_lock(&transfer->lock);
+    pthread_cond_wait(&transfer->signal, &transfer->lock);
+    pthread_mutex_unlock(&transfer->lock);
+}
+
+void spi_wait_for_thread(spi_transfer_t *transfer) {
+    pthread_mutex_lock(&transfer->lock);
+	int transfer_running = transfer->is_running;
+	if (transfer_running == 1)
+		pthread_cond_wait(&transfer->signal, &transfer->lock);
+    pthread_mutex_unlock(&transfer->lock);
+}
+
+void spi_transfer_destroy(spi_transfer_t *transfer) {
+    if (transfer) {
+        pthread_mutex_destroy(&transfer->lock);
+        pthread_cond_destroy(&transfer->signal);
+        free(transfer);
+    }
 }
 
 typedef struct v1rotations {
@@ -126,7 +249,6 @@ bool updateDmd( Serum_Frame_Struc* pSerum, int render32, int render64, uint8_t* 
 	} else if( pSerum->width32 > 0 && pSerum->width64 > 0 ) {
 		LOGTRACE( "v2: HD render64: %i, render64:%i & width32=%i width64=%i create_FrameFromRGB565", render32, render64,
 				  pSerum->width32, pSerum->width64 );
-		// hd case see https://github.com/PPUC/libdmdutil/blob/master/src/DMD.cpp#L1143
 		create_FrameFromRGB24HD( pSerum->width64, 64, (uint8_t*)pSerum->frame64, displayBuffer, 1 );
 	}
 	LOGTRACE( "set display update flag" );
@@ -250,14 +372,14 @@ int main( int argc, char** argv ) {
 			exit( 0 );
 			break;
 		default:
-			LOGERROR( "Unknown option: %c", opt );
+			LOGERROR( "unknown option: %c", opt );
 			exit( 1 );
 		}
 	}
 
 
 	if( argc - optind < 2 ) {
-		LOGERROR( "Not enough arguments provided" );
+		LOGERROR( "not enough arguments provided" );
 		usage();
 		exit( 1 );
 	}
@@ -274,7 +396,7 @@ int main( int argc, char** argv ) {
 	const char* rom = (const char*)argv[optind + 1];
 
 	// TODO maybe set other flags here
-	LOGDEBUG( "Start loading serum file %s", rom );
+	LOGDEBUG( "start loading serum file %s", rom );
 	
 	if (deviceType == PIN2DMD_HD){
 		flags = FLAG_REQUEST_64P_FRAMES | FLAG_REQUEST_32P_FRAMES;
@@ -283,7 +405,7 @@ int main( int argc, char** argv ) {
 	
 	Serum_Frame_Struc* pSerum = Serum_Load( path, rom, flags );
 	if( !pSerum ) {
-		LOGERROR( "Failed to load Serum: path=%s, rom=%s", path, rom );
+		LOGERROR( "failed to load Serum: path=%s, rom=%s", path, rom );
 		Serum_Dispose();
 		exit( 1 );
 	}
@@ -300,7 +422,7 @@ int main( int argc, char** argv ) {
 	uint32_t result;
 	int skipFrames = 0;
 
-	LOGDEBUG( "Starting main loop" );
+	LOGDEBUG( "starting main loop" );
 	frame_t frame;
 	uint32_t frame_offset = 0;
 	if( frame_reader && frame_reader_read_next( frame_reader, &frame, 0 ) == 0 ) {
@@ -311,16 +433,31 @@ int main( int argc, char** argv ) {
 	
 	bool displayUpdate = true;
 	bool newFrame = false;
+	bool use_threading = false;
 	rgb24* v1palette = NULL;
-
+	
+	if (deviceType == PIN2DMD_HD)
+		use_threading = true;
+	
+	spi_transfer_t *transfer = NULL;
+	
+	if (use_threading) {
+		LOGDEBUG( "create thread for HD spi transfer" );
+		transfer = spi_transfer_create(displayBuffer, rxbuffer);
+		if (!transfer) {
+			LOGERROR( "spi transfer init failed");
+			return 1;
+		}
+	}
+	
+	pthread_t spi_thread;
+	
 	while( 1 ) {
 		uint32_t now = millis();
 		if( frame_reader ) {
 			int c = nonblock_getchar();
 			if( c == 'd' )
 				skipFrames += 100;
-
-			// LOGTRACE( "read frame from frame reader 0x%x", now > (frame_offset + frame.timestamp) );
 			if(now > nextRotation > 0 && nextRotation != 0 ) {
 				if( pSerum->SerumVersion == SERUM_V1 ) {
 					displayUpdate =
@@ -338,7 +475,17 @@ int main( int argc, char** argv ) {
 				}
 			}
 			if(displayUpdate) {
-				transferSpi( displayBuffer, rxbuffer );
+				if (use_threading) {
+					spi_wait_for_thread(transfer);
+					if (spi_transfer_start(transfer, &spi_thread) != 0) {
+						LOGERROR ( "spi thread could not be started");
+						spi_transfer_destroy(transfer);
+						return 1;
+					}
+					spi_wait_for_signal(transfer);
+				} else {
+					transferSpi( displayBuffer, rxbuffer );
+				}
 				displayUpdate = false;
 			}
 			if( frame_reader_has_more( frame_reader ) ) {
@@ -374,7 +521,18 @@ int main( int argc, char** argv ) {
 			if (gpioRead( GPIO1 ) == 0) 
 				newFrame = true;
 			if (newFrame || displayUpdate){
-				transferSpi( displayBuffer, rxbuffer );
+				if (use_threading) {
+					spi_wait_for_thread(transfer);
+					if (spi_transfer_start(transfer, &spi_thread) != 0) {
+						LOGERROR ( "spi thread could not be started");
+						spi_transfer_destroy(transfer);
+						return 1;
+					}
+					spi_wait_for_signal(transfer);
+					LOGTRACE( "spi rx buffer received");
+				} else {
+					transferSpi( displayBuffer, rxbuffer );
+				}
 				displayUpdate = false;
 			}
 			if( now >= nextRotation && nextRotation != 0 ) {
@@ -417,7 +575,7 @@ int main( int argc, char** argv ) {
 					displayUpdate =
 						updateDmd( pSerum, flags & FLAG_REQUEST_32P_FRAMES, flags & FLAG_REQUEST_64P_FRAMES, displayBuffer );
 				} else {
-					LOGERROR( "Unknown Serum version: %d", pSerum->SerumVersion );
+					LOGERROR( "unknown Serum version: %d", pSerum->SerumVersion );
 				}
 				nextRotation = 0;
 			} else if( result > 0 && ( ( result & 0xffff ) < 2048 ) ) {
@@ -434,13 +592,15 @@ int main( int argc, char** argv ) {
 					displayUpdate =
 					updateDmd( pSerum, flags & FLAG_REQUEST_32P_FRAMES, flags & FLAG_REQUEST_64P_FRAMES, displayBuffer );
 				} else {
-					LOGERROR( "Unknown Serum version: %d", pSerum->SerumVersion );
+					LOGERROR( "unknown Serum version: %d", pSerum->SerumVersion );
 				}
 			} 
 		}
 
 	} // end main loop
-
+	
+	if(use_threading)
+		spi_transfer_destroy;
 	Serum_Dispose();
 	free( serumBuffer );
 	free( displayBuffer );
