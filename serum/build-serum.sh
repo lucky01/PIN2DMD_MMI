@@ -2,7 +2,7 @@
 
 mkdir ../build
 
-g++ -c spi-serum.c -I ~/git/libserum/src -I../include
+g++ -c spi-serum.c -I ../../libserum/src -I../include
 g++ -c ../include/log.c
 g++ -c ../include/frame_reader.c
 g++ -c ../include/pin2mmi.c
