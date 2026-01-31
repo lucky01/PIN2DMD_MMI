@@ -11,8 +11,11 @@ cmake --build build
 
 ## Compiling spi-serum
 ```With libserum folder next to the PIN2DMD_MMI folder execute
-chmod 755 build-serum.sh
-./build-serum.sh
+make
+
+to install as service automatically started at boot execute 
+chmod 755 install-serum.sh
+./install-serum.sh
 ```
 
 ## spi-serum Usage
