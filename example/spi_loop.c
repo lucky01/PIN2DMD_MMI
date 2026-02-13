@@ -1,5 +1,6 @@
 #include <fcntl.h>
 #include <linux/spi/spidev.h>
+#include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -18,6 +19,12 @@ static struct option long_options[] = {
 
     { 0, 0, 0, 0 } // End marker
 };
+
+// Make sure we can exit gracefully when Ctrl-C is pressed.
+volatile bool interrupt_received = false;
+static void InterruptHandler(int signo) {
+  interrupt_received = true;
+}
 
 void usage() {
 	printf( "Usage: spi_loop [options]\n" );
@@ -74,6 +81,9 @@ int main( int argc, char** argv ) {
 	uint16_t rgb565bufferHD[16384];
 	
 	setLogDevice( LOG_DEVICE_STDOUT );
+
+	signal(SIGTERM, InterruptHandler);
+  	signal(SIGINT, InterruptHandler);
 	
 	int opt = 0;
 	int longOptIndex = 0;
@@ -100,7 +110,7 @@ int main( int argc, char** argv ) {
 
 	memset(displayBuffer,0,DISPLAYBUFFER_SIZE);
 
-	while( 1 ) {
+	while( !interrupt_received ) {
 
 		gpioWrite(GPIO2,true); // get next frame
 

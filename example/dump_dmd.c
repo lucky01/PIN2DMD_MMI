@@ -1,4 +1,5 @@
 #include <fcntl.h>
+#include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -7,6 +8,12 @@
 #include <unistd.h>
 #include <sys/time.h>
 #include "pin2mmi.h"
+
+// Make sure we can exit gracefully when Ctrl-C is pressed.
+volatile bool interrupt_received = false;
+static void InterruptHandler(int signo) {
+  interrupt_received = true;
+}
 
 int32_t millis( void ) {
 	struct timeval tv;
@@ -38,6 +45,9 @@ int main( void ) {
 	rxbuffer = (uint8_t*)malloc( RX_BUFFER_SIZE );
 	
 	memset( txbuffer, 0x00, TX_BUFFER_SIZE );
+	
+	signal(SIGTERM, InterruptHandler);
+	signal(SIGINT, InterruptHandler);
 
 	init(SPI_NORMAL);
 	
@@ -47,7 +57,7 @@ int main( void ) {
 	printf( "UID %s \n", UIDString );
 	printf( "SPI mode %d \n", Mmi_Status );
 
-	while( 1 ) {
+	while( !interrupt_received ) {
 
 		memcpy (txbuffer, cmd[DUMP], HEADER_SIZE);
 		txbuffer[3] = numberOfPlanes;

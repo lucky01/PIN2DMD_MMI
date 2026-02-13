@@ -1,4 +1,5 @@
 #include <fcntl.h>
+#include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,6 +13,12 @@
 #include "log.h"
 #include "pin2mmi.h"
 #include <getopt.h>
+
+// Make sure we can exit gracefully when Ctrl-C is pressed.
+volatile bool interrupt_received = false;
+static void InterruptHandler(int signo) {
+  interrupt_received = true;
+}
 
 int32_t millis( void ) {
 	struct timeval tv;
@@ -64,6 +71,9 @@ int main( int argc, char** argv ) {
 	txbuffer = (uint8_t*)malloc( (4 * planesize) + HEADER_SIZE);
 	
 	memset( txbuffer, 0x00, TX_BUFFER_SIZE );
+
+  	signal(SIGTERM, InterruptHandler);
+  	signal(SIGINT, InterruptHandler);
 	
 	setLogDevice( LOG_DEVICE_STDOUT );
 
@@ -118,7 +128,7 @@ int main( int argc, char** argv ) {
 	
 	int skipFrames = 0;
 
-	while( 1 ) {
+	while( !interrupt_received ) {
 		no_update:	
 		uint32_t now = millis();
 

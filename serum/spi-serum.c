@@ -1,5 +1,6 @@
 #include <fcntl.h>
 #include <linux/spi/spidev.h>
+#include <signal.h>
 #include <pigpio.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -39,6 +40,12 @@ static const uint8_t lumConvTab_6bit[256] = {
 };
 
 uint32_t fWidth = 128, fHeight = 32;
+
+// Make sure we can exit gracefully when Ctrl-C is pressed.
+volatile bool interrupt_received = false;
+static void InterruptHandler(int signo) {
+  interrupt_received = true;
+}
 
 int32_t millis( void ) {
 	struct timeval tv;
@@ -328,6 +335,9 @@ int main( int argc, char** argv ) {
 
 	int flags = FLAG_REQUEST_32P_FRAMES; // default request 32P frames from serum
 
+	signal(SIGTERM, InterruptHandler);
+  	signal(SIGINT, InterruptHandler);
+
 	setLogDevice( LOG_DEVICE_STDOUT );
 
 	set_nonblock_mode( &orig_termios );
@@ -452,7 +462,7 @@ int main( int argc, char** argv ) {
 	
 	pthread_t spi_thread;
 	
-	while( 1 ) {
+	while( !interrupt_received ) {
 		uint32_t now = millis();
 		if( frame_reader ) {
 			int c = nonblock_getchar();
