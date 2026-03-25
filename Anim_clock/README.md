@@ -5,6 +5,22 @@ RPI2DMD is a charityware / careware project which displays clock, date and weath
 You can find all the information about RPI2DMD on the Neo Arcadia forum.
 https://www.neo-arcadia.com/forum/viewtopic.php?f=14&t=67065
 
+To compile the following packages need to be installed 
+```
+apt install libgraphicsmagick++1-dev
+apt install libcurl4-openssl-dev
+apt install libjson-c-dev
+```
+
+You may have to install additional packages to run RPI2DMD including the configuration web frontend which is part
+of the RPI2DMD distribution image. 
+```
+apt install php
+apt install apache2
+apt install dbus
+apt install net-tools
+```
+
 ## AnimClock - playback animated gif followed by date and time display
 ```
 usage: ./Anim_clock [options]
@@ -80,3 +96,6 @@ Options:
     -X           : Width
     -F           : Filename (default /tmp/meteo.png)
 ```
+
+
+
