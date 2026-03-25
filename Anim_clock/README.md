@@ -6,7 +6,7 @@ You can find all the information about RPI2DMD on the Neo Arcadia forum.
 https://www.neo-arcadia.com/forum/viewtopic.php?f=14&t=67065
 
 ## AnimClock - playback animated gif followed by date and time display
-
+```
 usage: ./Anim_clock [options]
 Options:
     -h                          : Panel height in pixel. Typically 32 or 64. (Default: 32).
@@ -36,18 +36,18 @@ Date options :
     -A <text-alignment>         : 0 : Top Left, 1: Left, 2: Bottom Left, 3: Top Middle, 4: Middle, 5: Bottom Middle, 6: Top Right, 7: Right, 8: Bottom Right.
     -L <locale>                 : Text localisation (Default : fr_FR)
     -C <r,g,b>                  : Color. Default 255,255,0
-
+```
 
 ## Get_GIF_delay - display total time of GIF animation
-
+```
 Usage: Get_GIF_delay [options] -F filename
 Options:
   -F <file>             : Animation/Image file.
   -l <log-level>        : Set log level (0-5)
-
+```
 
 ## Show_Image - display animation or still image (looks for boot.gif animation if no filename option is given)
-
+```
 Usage: Show_Image [options] -F filename
 Options:
   -F <file>             : Animation/Image file.
@@ -56,19 +56,19 @@ Options:
   -h                    : Panel height. Typically 32 or 64. (Default: 32).
   -w                    : Panel width. Typically 128 or 256. (Default: 128).
   -l <log-level>        : Set log level (0-5)
-
+```
 
 ## Show_IP - display IP address information of wlan0 and eth0
-
+```
 Usage: Show_IP [options]
 Options:
     -h                  : Panel rows. Typically 8, 16, 32 or 64. (Default: 32).
     -w                  : Panel columns. Typically 32 or 64. (Default: 32).
     -l <log-level>      : Set log level (0-5)
-
+```
 
 ## Weather - fetch weather forecast from OpenWeather and save as 128x32 png image
-
+```
 Usage: Weather [options]
 Options:
     -i           : OpenWeather ID
@@ -77,5 +77,6 @@ Options:
     -u           : Units
     -C           : Text Color
     -Y           : Height
+```
     -X           : Width
     -F           : Filename (default /tmp/meteo.png)
