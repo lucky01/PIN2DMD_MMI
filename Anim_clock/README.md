@@ -77,6 +77,6 @@ Options:
     -u           : Units
     -C           : Text Color
     -Y           : Height
-```
     -X           : Width
     -F           : Filename (default /tmp/meteo.png)
+```
