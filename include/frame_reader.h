@@ -4,13 +4,12 @@
 #include <stdio.h>
 #include <stdint.h>
 
-#define FRAME_SIZE 4096
-#define FRAME_WIDTH 128
-#define FRAME_HEIGHT 32
+extern int dump_width;
+extern int dump_height;
 
 typedef struct {
-    uint32_t timestamp;
-    uint8_t data[FRAME_SIZE];
+    uint32_t delay;
+    uint8_t* data;
 } frame_t;
 
 typedef struct {

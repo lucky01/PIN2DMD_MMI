@@ -1,7 +1,7 @@
 #include <fcntl.h>
 #include <linux/spi/spidev.h>
 #include <signal.h>
-#include <pigpio.h>
+#include <gpiod.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -47,11 +47,23 @@ static void InterruptHandler(int signo) {
   interrupt_received = true;
 }
 
-int32_t millis( void ) {
-	struct timeval tv;
-	gettimeofday( &tv, NULL );
-	return (int32_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
-}
+uint16_t palette565[] = {0x0000,
+						 0x1082,
+						 0x2104,
+						 0x3186,
+						 0x4228,
+						 0x52AA,
+						 0x632c,
+						 0x73ae,
+						 0x8c51,
+						 0x9cd3,
+						 0xad55,
+						 0xbdd7,
+						 0xce79,
+						 0xdefb,
+						 0xef7d,
+						 0xffff
+						 };
 
 typedef struct {
     int spi_fd;
@@ -208,36 +220,41 @@ uint32_t updateV1Rotations(v1rotations* rot, rgb24* palette)
 	return nextRotation;
 }
 
-bool updateDmdV1( uint8_t* frame, rgb24* palette, uint8_t* displayBuffer ) {
+ uint16_t* updateDmdV1( uint8_t* frame, rgb24* palette, uint8_t* displayBuffer ) {
 	LOGTRACE( "v1: create RGB24 buffer with palette" );
 	static uint16_t* scaleBuffer = NULL;
-	static rgb24* serumV1RGBbuffer = NULL;
+	static uint16_t* serumV1RGB565buffer = NULL;
 	
-	if( serumV1RGBbuffer == NULL )
-		serumV1RGBbuffer = (rgb24*)malloc( fWidth * fHeight * 3 );
+	uint16_t palette565[64]= {};
+	
+	for (int i = 0; i < 64; i++){
+		palette565[i] = ((palette[i].red >> 3) << 11) | ((palette[i].green >> 2) << 5) | (palette[i].blue >> 3);
+	}
+	
+	if( serumV1RGB565buffer == NULL )
+		serumV1RGB565buffer = (uint16_t*)malloc( fWidth * fHeight * 2 );
 	for( int jj = 0; jj < fHeight; jj++ ) {
 		for( int ii = 0; ii < fWidth; ii++ ) {
-			serumV1RGBbuffer[(jj *fWidth)+ii] = palette[frame[(jj *fWidth)+ii]];
+			serumV1RGB565buffer[(jj *fWidth)+ii] = palette565[frame[(jj *fWidth)+ii]];
 		}
 	}
 	if (deviceType == PIN2DMD_HD){
 		// allocate only once and the reuse
 		if( scaleBuffer == NULL )
-			scaleBuffer = (uint16_t*)malloc( 256 * 64 * 3 );
-		scaleHD(256, 64, (uint8_t*) serumV1RGBbuffer, (uint8_t*) scaleBuffer, 3);
-		create_FrameFromRGB24HD( 256, 64, (uint8_t*) scaleBuffer, displayBuffer);
+			scaleBuffer = (uint16_t*)malloc( 256 * 64 * 2 );
+		scaleHD(256, 64, (uint8_t*) serumV1RGB565buffer, (uint8_t*) scaleBuffer, 2);
+		create_FrameFromRGB565HD( 256, 64, scaleBuffer, displayBuffer);
+		return scaleBuffer;
 	} else {
-		displayBuffer = create_FrameFromRGB24( 128, 32, (rgb24*)serumV1RGBbuffer, displayBuffer );
+		displayBuffer = create_FrameFromRGB565( 128, 32, (uint16_t*)serumV1RGB565buffer, displayBuffer );
 	}
-	LOGTRACE( "set display update flag" );
-	return true;
+	return serumV1RGB565buffer;
 }
 
-bool updateDmd( Serum_Frame_Struc* pSerum, int render32, int render64, uint8_t* displayBuffer ) {
+uint16_t* updateDmd( Serum_Frame_Struc* pSerum, int render32, int render64, uint8_t* displayBuffer ) {
 	LOGTRACE( "v%i: render32: %i, render64:%i & width32=%i width64=%i create_FrameFromRGB565", pSerum->SerumVersion,
 	          render32, render64, pSerum->width32, pSerum->width64 );
 	static uint16_t* scaleBuffer = NULL;
-	static rgb24* serumV1RGBbuffer = NULL;
 	
 	if( render32 && pSerum->width32 > 0 && pSerum->width64 == 0 ) {
 		LOGTRACE( "v2: render32 & width32=%i width64=%i create_FrameFromRGB565", pSerum->width32, pSerum->width64 );
@@ -247,32 +264,25 @@ bool updateDmd( Serum_Frame_Struc* pSerum, int render32, int render64, uint8_t* 
 				scaleBuffer = (uint16_t*)malloc( 256 * 64 * 2 );
 			scaleHD(pSerum->width32 * 2, 64, (uint8_t*) pSerum->frame32, (uint8_t*) scaleBuffer, 2);
 			create_FrameFromRGB24HD( pSerum->width32 * 2, 64, (uint8_t*) scaleBuffer, displayBuffer, 1 );
+			return scaleBuffer;
 		} else {
-			displayBuffer = create_FrameFromRGB565( pSerum->width32, 32, pSerum->frame32, displayBuffer );
+			if (deviceType == PIN2DMD_XL){
+				displayBuffer = create_FrameFromRGB565( pSerum->width64, 64, pSerum->frame64, displayBuffer );
+			} else {
+				displayBuffer = create_FrameFromRGB565( pSerum->width32, 32, pSerum->frame32, displayBuffer );
+			}
 		} 
 	} else if( render64 && pSerum->width64 > 0 && pSerum->width32 == 0 ) {
 		LOGTRACE( "v2: render64 & width32=%i width64=%i create_FrameFromRGB565", pSerum->width32, pSerum->width64 );
 		create_FrameFromRGB24HD( pSerum->width64, 64, (uint8_t*)pSerum->frame64, displayBuffer, 1 );
+		return pSerum->frame64;
 	} else if( pSerum->width32 > 0 && pSerum->width64 > 0 ) {
 		LOGTRACE( "v2: HD render64: %i, render64:%i & width32=%i width64=%i create_FrameFromRGB565", render32, render64,
 				  pSerum->width32, pSerum->width64 );
 		create_FrameFromRGB24HD( pSerum->width64, 64, (uint8_t*)pSerum->frame64, displayBuffer, 1 );
+		return pSerum->frame64;
 	}
-	LOGTRACE( "set display update flag" );
-	return true;
-}
-
-void dump( uint8_t* p ) {
-	const char* hex_digits = "0123456789ABCDEF";
-	int y = 0, x = 0;
-	printf("0x%x\n", millis());
-	for( y = 0; y < 32; y++ ) {
-		for( x = 0; x < 128; x++ ) {
-			printf( "%c", hex_digits[p[y * 128 + x]] );
-		}
-		printf( "\n" );
-	}
-	printf( "\n" );
+	return pSerum->frame32;
 }
 
 struct termios orig_termios;
@@ -301,9 +311,10 @@ void restore() { restore_mode( &orig_termios ); }
 
 static struct option long_options[] = {
     { "help", no_argument, 0, '?' },
-    { "dump-frames", no_argument, 0, 'd' },
+    { "dump", required_argument, 0, 'd' },
  	{ "reset",  no_argument, 0, 'r' },
-    //{ "output", required_argument, 0, 'o' },
+    { "screen", required_argument, 0, 's' },
+	{ "monochrome", required_argument, 0, 'o' },
     { "log-level", required_argument, 0, 'l' },
     { "read-file", required_argument, 0, 'f' },
     { "ignore-unknown-frames-timeout", required_argument, 0, 'i' },
@@ -315,12 +326,14 @@ static struct option long_options[] = {
 void usage() {
 	printf( "Usage: spi-serum [options] <altcolor-path> <rom-name>\n" );
 	printf( "Options:\n" );
-	printf( "  -d                                Dump serum frames as hex to stdout\n" );
-	printf( "  -i <IgnoreUnknownFramesTimeout>   Set ignore unknown frames timeout (ms). default dont set\n" );
-	printf( "  -m <MaximumUnknownFramesToSkip>   Set maximum unknown frames to skip. default dont set\n" );
-	printf( "  -l <loglevel>                     Set log level (0-5)\n" );
-	printf( "  -f <dump-file>\t\t\tRead frames from given file instead of SPI input\n" );
-	printf( "  -r					Reset PIN2DMD at startup\n" );
+	printf( "  -d <dump>\t\t\t\tDump input frames to give path\n" );
+	printf( "  -s <screen>\t\t\t\tdisplay colored frames on screen (mode 0-3)\n" );
+	printf( "  -o <monochrome>\t\t\tdisplay monochrome frames on screen (mode 0-3)\n" );
+	printf( "  -f <read-file>\t\t\tRead frames from given file instead of SPI input\n" );
+	printf( "  -r <reset>\t\t\t\tReset PIN2DMD at startup\n" );
+	printf( "  -i <IgnoreUnknownFramesTimeout>\tSet ignore unknown frames timeout (ms). default dont set\n" );
+	printf( "  -m <MaximumUnknownFramesToSkip>\tSet maximum unknown frames to skip. default dont set\n" );
+	printf( "  -l <loglevel>\t\t\t\tSet log level (0-5)\n" );
 }
 
 int main( int argc, char** argv ) {
@@ -331,7 +344,6 @@ int main( int argc, char** argv ) {
 	uint8_t* lastrxbuffer;  // buffer for receiving dmd frame data
 	uint8_t* displayBuffer; // buffer for sending display frame data
 	uint8_t* serumBuffer;   // buffer for serum input data to colorize
-	rgb24* rgbbuffer;       // buffer
 
 	int flags = FLAG_REQUEST_32P_FRAMES; // default request 32P frames from serum
 
@@ -339,7 +351,7 @@ int main( int argc, char** argv ) {
   	signal(SIGINT, InterruptHandler);
 
 	setLogDevice( LOG_DEVICE_STDOUT );
-
+	
 	set_nonblock_mode( &orig_termios );
 	atexit( restore );
 	if( argc < 3 ) {
@@ -351,18 +363,34 @@ int main( int argc, char** argv ) {
 	int longOptIndex = 0;
 	int setIgnoreUnknownFramesTimeout = -1;
 	int setMaximumUnknownFramesToSkip = -1;
-	int dumpFrames = 0;
+	char fileName [35];
+	char dumpPath[1024] = {};
+	char dumpPathRaw [1024] = {};
+	uint32_t tick = 0;
+	bool monoScreen = false;
+	bool coloredScreen = false;
 	bool withReset = false;
-
+	int mode = 0;
+	
 	frame_reader_t* frame_reader = (frame_reader_t*)NULL;
 
-	while( ( opt = getopt_long( argc, argv, "drl:f:i:m:?", long_options, &longOptIndex ) ) != -1 ) {
+	while( ( opt = getopt_long( argc, argv, "d:rl:f:i:m:s:o:?", long_options, &longOptIndex ) ) != -1 ) {
 		switch( opt ) {
 		case 'i':
 			setIgnoreUnknownFramesTimeout = atoi( optarg );
 			break;
 		case 'd':
-			dumpFrames = 1;
+			strcpy(dumpPath, optarg);
+			break;
+		case 's':
+			coloredScreen = true;
+			monoScreen = false;
+			mode = atoi( optarg );
+			break;
+		case 'o':
+			monoScreen = true;
+			coloredScreen = false;
+			mode = atoi( optarg );
 			break;
 		case 'm':
 			setMaximumUnknownFramesToSkip = atoi( optarg );
@@ -376,7 +404,8 @@ int main( int argc, char** argv ) {
 		case 'f': {
 			frame_reader = (frame_reader_t*)malloc( sizeof( frame_reader_t ) );
 			frame_reader_init( frame_reader, optarg );
-		} break;
+		}
+		    break;
 		case '?':
 			usage();
 			exit( 0 );
@@ -387,7 +416,6 @@ int main( int argc, char** argv ) {
 		}
 	}
 
-
 	if( argc - optind < 2 ) {
 		LOGERROR( "not enough arguments provided" );
 		usage();
@@ -396,11 +424,31 @@ int main( int argc, char** argv ) {
 
 	init( SPI_EXTERNAL_RGB, withReset );
 	
+	if (planesize == 1536) {
+		fWidth = 192; fHeight = 64;
+	} else if (planesize == 2048){
+		fWidth = 256; fHeight = 64;
+	}
+	
+	int frame_size = fWidth * fHeight;
+	
+	if (dumpPath[0] != 0x00) {
+		struct timespec next_time;	
+		struct tm tm;
+		next_time.tv_sec = time(NULL);
+		localtime_r(&next_time.tv_sec, &tm);
+		strftime(fileName, sizeof(fileName), "/%d%m%y_%H%M%S_pin2dmd_dump", &tm);
+		strcat(dumpPath,fileName);
+		strcpy(dumpPathRaw, dumpPath);
+		strcat(dumpPath, ".txt");
+		strcat(dumpPathRaw, ".raw");
+		dump_file_init(dumpPath, dumpPathRaw);
+	}
+	
 	rxbuffer = (uint8_t*)malloc( RX_BUFFER_SIZE );
 	lastrxbuffer = (uint8_t*)malloc( RX_BUFFER_SIZE );
 	displayBuffer = (uint8_t*)malloc( DISPLAYBUFFER_SIZE );
-	serumBuffer = (uint8_t*)malloc( fWidth * fHeight );
-	rgbbuffer = (rgb24*)malloc( WIDTH * HEIGHT );
+	serumBuffer = (uint8_t*)malloc( frame_size );
 
 	const char* path = (const char*)argv[optind];
 	const char* rom = (const char*)argv[optind + 1];
@@ -411,6 +459,9 @@ int main( int argc, char** argv ) {
 	if (deviceType == PIN2DMD_HD){
 		flags = FLAG_REQUEST_64P_FRAMES | FLAG_REQUEST_32P_FRAMES;
 		LOGDEBUG( "Serum HD flags set");
+	} else if (deviceType == PIN2DMD_XL){
+		LOGDEBUG( "Serum XL flags set");
+		flags = FLAG_REQUEST_64P_FRAMES;
 	}
 	
 	Serum_Frame_Struc* pSerum = Serum_Load( path, rom, flags );
@@ -434,11 +485,10 @@ int main( int argc, char** argv ) {
 
 	LOGDEBUG( "starting main loop" );
 	frame_t frame;
-	uint32_t frame_offset = 0;
-	if( frame_reader && frame_reader_read_next( frame_reader, &frame, 0 ) == 0 ) {
-		// on first frame, set offset
-		frame_offset = millis() - frame.timestamp;
-		LOGDEBUG( "frame offset: 0x%x", frame_offset );
+	uint32_t frame_time = 0;
+	if (frame_reader){
+		frame.data = (uint8_t*) malloc(dump_width*dump_height);
+		frame_reader_read_next( frame_reader, &frame, 0 );
 	}
 	
 	bool displayUpdate = true;
@@ -446,7 +496,7 @@ int main( int argc, char** argv ) {
 	bool use_threading = false;
 	rgb24* v1palette = NULL;
 	
-	if (deviceType == PIN2DMD_HD)
+	if (deviceType == PIN2DMD_HD || deviceType == PIN2DMD_XL)
 		use_threading = true;
 	
 	spi_transfer_t *transfer = NULL;
@@ -462,6 +512,18 @@ int main( int argc, char** argv ) {
 	
 	pthread_t spi_thread;
 	
+	struct fb_var_screeninfo vinfo;
+	int fb_fd;
+	uint16_t* rgb565buffer = NULL;
+	uint16_t* rgb565MonoBuffer = NULL;
+	if (monoScreen)
+		rgb565MonoBuffer = (uint16_t*)malloc( fWidth * fHeight * 2 );
+	
+	if(monoScreen || coloredScreen){
+		fb_fd = fb_init(&vinfo);	
+		fb_clear(fb_fd, vinfo);
+	}
+	
 	while( !interrupt_received ) {
 		uint32_t now = millis();
 		if( frame_reader ) {
@@ -470,13 +532,13 @@ int main( int argc, char** argv ) {
 				skipFrames += 100;
 			if(now > nextRotation > 0 && nextRotation != 0 ) {
 				if( pSerum->SerumVersion == SERUM_V1 ) {
-					displayUpdate =
-						updateDmdV1( pSerum->frame, v1palette, displayBuffer );
+					displayUpdate = true;
+					rgb565buffer = updateDmdV1( pSerum->frame, v1palette, displayBuffer );
 					nextRotation = updateV1Rotations((v1rotations*)pSerum->rotations, v1palette);
 				} else if ( pSerum->SerumVersion == SERUM_V2 ) {
 					uint32_t result = Serum_Rotate();
-					displayUpdate =
-						updateDmd( pSerum, flags & FLAG_REQUEST_32P_FRAMES, flags & FLAG_REQUEST_64P_FRAMES, displayBuffer );
+					displayUpdate = true;
+					rgb565buffer = updateDmd( pSerum, flags & FLAG_REQUEST_32P_FRAMES, flags & FLAG_REQUEST_64P_FRAMES, displayBuffer );
 					if( result > 0 && ( ( result & 0xffff ) < 2048 ) ) {
 						nextRotation = now + ( result & 0xffff );
 					} else {
@@ -496,10 +558,20 @@ int main( int argc, char** argv ) {
 				} else {
 					transferSpi( displayBuffer, rxbuffer );
 				}
+				if(rgb565buffer != NULL && coloredScreen) {
+					LOGTRACE("colored display on framebuffer");
+					if (deviceType == PIN2DMD_HD){
+						fb_displayRGB565(fb_fd, vinfo, rgb565buffer, 256, 64, mode);
+					} else if (deviceType == PIN2DMD_XL){
+						fb_displayRGB565(fb_fd, vinfo, rgb565buffer, 192, 64, mode);
+					} else {
+						fb_displayRGB565(fb_fd, vinfo, rgb565buffer, 128, 32, mode);
+					}
+				}
 				displayUpdate = false;
 			}
 			if( frame_reader_has_more( frame_reader ) ) {
-				if( now < ( frame_offset + frame.timestamp ) ) {
+				if( now < frame_time ) {
 					// not yet time for next frame
 					if( nextRotation )
 						continue;
@@ -510,16 +582,28 @@ int main( int argc, char** argv ) {
 					LOGERROR( "frame reader failed to read next frame" );
 					break;
 				} else {
+					frame_time = millis() + frame.delay;
 					if( skipFrames ) {
-						frame_offset = millis() - frame.timestamp;
 						skipFrames = 0;
 					}
 					LOGTRACE( "read frame. now: 0x%x", now );
-					LOGTRACE( "frame timestamp: 0x%x", frame.timestamp );
-					memcpy( serumBuffer, frame.data, FRAME_SIZE );
+					LOGTRACE( "frame time: 0x%x", frame_time );
+					memcpy( serumBuffer, frame.data, frame_size );
 					newFrame = true;
-					if( dumpFrames )
-						dump( serumBuffer );
+				}
+				if (monoScreen){
+					LOGTRACE("display monochrome on framebuffer");
+					uint8_t shades4[4] = { 0, 1, 4, 15 };
+					for( int jj = 0; jj < fHeight; jj++ ) {
+						for( int ii = 0; ii < fWidth; ii++ ) {
+							if( deviceMode == SAM | deviceMode == Spike | deviceMode == Gottlieb1 | deviceMode == HomePin )
+								rgb565MonoBuffer[(jj *fWidth)+ii] = palette565[serumBuffer[(jj *fWidth)+ii]];
+							else
+								rgb565MonoBuffer[(jj *fWidth)+ii] = palette565[shades4[serumBuffer[(jj *fWidth)+ii]]];
+						}
+					}
+					
+					fb_displayRGB565(fb_fd, vinfo, rgb565MonoBuffer, fWidth, fHeight, mode);
 				}
 			} else {
 				LOGTRACE( "frame reader reached end of frames, exiting" );
@@ -527,8 +611,8 @@ int main( int argc, char** argv ) {
 			}
 		} else {
 
-			gpioWrite( GPIO2, true );
-			if (gpioRead( GPIO1 ) == 0) 
+			gpiod_line_request_set_value(gpio2_request, GPIO2, GPIOD_LINE_VALUE_ACTIVE);
+			if (gpiod_line_request_get_value(gpio1_request, GPIO1) == GPIOD_LINE_VALUE_INACTIVE) 
 				newFrame = true;
 			if (newFrame || displayUpdate){
 				if (use_threading) {
@@ -540,20 +624,31 @@ int main( int argc, char** argv ) {
 					}
 					spi_wait_for_signal(transfer);
 					LOGTRACE( "spi rx buffer received");
+					tick = millis();
 				} else {
 					transferSpi( displayBuffer, rxbuffer );
+				}
+				if(rgb565buffer != NULL && coloredScreen) {
+					LOGTRACE("display colored on framebuffer");
+					if (deviceType == PIN2DMD_HD){
+						fb_displayRGB565(fb_fd, vinfo, rgb565buffer, 256, 64, mode);
+					} else if (deviceType == PIN2DMD_XL){
+						fb_displayRGB565(fb_fd, vinfo, rgb565buffer, 192, 64, mode);
+					} else {
+						fb_displayRGB565(fb_fd, vinfo, rgb565buffer, 128, 32, mode);
+					}
 				}
 				displayUpdate = false;
 			}
 			if( now >= nextRotation && nextRotation != 0 ) {
 				if( pSerum->SerumVersion == SERUM_V1 ) {
-					displayUpdate =
-						updateDmdV1( pSerum->frame, v1palette, displayBuffer );
+					displayUpdate = true;
+					rgb565buffer = updateDmdV1( pSerum->frame, v1palette, displayBuffer );
 					nextRotation = updateV1Rotations((v1rotations*)pSerum->rotations, v1palette);
 				} else if ( pSerum->SerumVersion == SERUM_V2 ) {
 					uint32_t result = Serum_Rotate();
-					displayUpdate =
-						updateDmd( pSerum, flags & FLAG_REQUEST_32P_FRAMES, flags & FLAG_REQUEST_64P_FRAMES, displayBuffer );
+					displayUpdate = true;
+					rgb565buffer = updateDmd( pSerum, flags & FLAG_REQUEST_32P_FRAMES, flags & FLAG_REQUEST_64P_FRAMES, displayBuffer );
 					if( result > 0 && ( ( result & 0xffff ) < 2048 ) ) {
 						nextRotation = now + ( result & 0xffff );
 					} else {
@@ -562,10 +657,15 @@ int main( int argc, char** argv ) {
 				}
 			} 
 			if (newFrame){
-				gpioWrite( GPIO2, false );
-				create_FrameBuffer( 128, 32, deviceMode, rxbuffer, (uint8_t*)serumBuffer );			
-				if( dumpFrames )
-					dump( serumBuffer );
+				gpiod_line_request_set_value(gpio2_request, GPIO2, GPIOD_LINE_VALUE_INACTIVE);
+					create_FrameBuffer( fWidth, fHeight, deviceMode, rxbuffer, (uint8_t*)serumBuffer );	
+				if (dumpPath[0] != 0x00)
+					dump_file(dumpPath, dumpPathRaw, tick, serumBuffer, rxbuffer);
+				if (monoScreen){
+					LOGTRACE("display monochrome on framebuffer");
+					create_FrameBuffer( fWidth, fHeight, deviceMode, rxbuffer, (uint8_t*) rgb565MonoBuffer,(uint8_t*) palette565, true);
+					fb_displayRGB565(fb_fd, vinfo, rgb565MonoBuffer, fWidth, fHeight, mode);
+				}
 			}
 		}
 	colorize:
@@ -579,11 +679,11 @@ int main( int argc, char** argv ) {
 			} else if( result == 0 ) { // if new frame with no rotation detected
 				LOGTRACE( "Serum: new frame detected, no rotation" );
 				if( pSerum->SerumVersion == SERUM_V1 ) {
-					displayUpdate =
-						updateDmdV1( pSerum->frame, (rgb24*)pSerum->palette, displayBuffer );
+					displayUpdate = true;
+					rgb565buffer = updateDmdV1( pSerum->frame, (rgb24*)pSerum->palette, displayBuffer );
 				} else if( pSerum->SerumVersion == SERUM_V2 ) {
-					displayUpdate =
-						updateDmd( pSerum, flags & FLAG_REQUEST_32P_FRAMES, flags & FLAG_REQUEST_64P_FRAMES, displayBuffer );
+					displayUpdate = true;
+					rgb565buffer = updateDmd( pSerum, flags & FLAG_REQUEST_32P_FRAMES, flags & FLAG_REQUEST_64P_FRAMES, displayBuffer );
 				} else {
 					LOGERROR( "unknown Serum version: %d", pSerum->SerumVersion );
 				}
@@ -594,13 +694,13 @@ int main( int argc, char** argv ) {
 						v1palette = (rgb24*)malloc( 64 * 3 );
 					memcpy(v1palette, pSerum->palette, 64 * 3);
 					nextRotation = updateV1Rotations((v1rotations*)pSerum->rotations, v1palette);
-					displayUpdate =
-						updateDmdV1( pSerum->frame, (rgb24*)pSerum->palette, displayBuffer );
+					displayUpdate = true;
+					rgb565buffer = updateDmdV1( pSerum->frame, (rgb24*)pSerum->palette, displayBuffer );
 				} else if( pSerum->SerumVersion == SERUM_V2 ) {
 					nextRotation = now + ( result & 0xffff );
 					LOGTRACE( "Serum: new frame detected, next rotation in %d ms", ( result & 0xffff ) );
-					displayUpdate =
-					updateDmd( pSerum, flags & FLAG_REQUEST_32P_FRAMES, flags & FLAG_REQUEST_64P_FRAMES, displayBuffer );
+					displayUpdate = true;
+					rgb565buffer = updateDmd( pSerum, flags & FLAG_REQUEST_32P_FRAMES, flags & FLAG_REQUEST_64P_FRAMES, displayBuffer );
 				} else {
 					LOGERROR( "unknown Serum version: %d", pSerum->SerumVersion );
 				}

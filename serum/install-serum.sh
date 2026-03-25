@@ -1,7 +1,10 @@
-systemctl stop serum
-systemctl disable serum
-cp serum.service /etc/systemd/system/serum.service
-cp ../build/spi-serum /usr/local/bin/.
-systemctl enable serum
-systemctl start serum
+#!/bin/bash
+
+sudo systemctl stop serum
+sudo systemctl disable serum
+sudo cp serum.service /etc/systemd/system/serum.service
+sudo mkdir '/opt/serum'
+sudo cp ../build/spi-serum /opt/serum/.
+sudo systemctl enable serum
+sudo systemctl start serum
 

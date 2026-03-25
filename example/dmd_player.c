@@ -20,12 +20,6 @@ static void InterruptHandler(int signo) {
   interrupt_received = true;
 }
 
-int32_t millis( void ) {
-	struct timeval tv;
-	gettimeofday( &tv, NULL );
-	return (int32_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
-}
-
 struct termios orig_termios;
 
 void set_nonblock_mode( struct termios* orig_termios ) {
@@ -65,11 +59,10 @@ void usage() {
 
 int main( int argc, char** argv ) {
 	uint8_t* txbuffer;
-		
-	uint8_t frameBuffer[4096];
-
-	txbuffer = (uint8_t*)malloc( (4 * planesize) + HEADER_SIZE);
+	txbuffer = (uint8_t*)malloc( (4 * planesize) + HEADER_SIZE);	
 	
+	uint8_t* frameBuffer = NULL;
+
 	memset( txbuffer, 0x00, TX_BUFFER_SIZE );
 
   	signal(SIGTERM, InterruptHandler);
@@ -115,15 +108,19 @@ int main( int argc, char** argv ) {
 	
 	frame_reader = (frame_reader_t*)malloc( sizeof( frame_reader_t ) );
 	frame_reader_init( frame_reader, filename );
+	
+	frameBuffer = (uint8_t*)malloc(dump_width*dump_height);
+	free(txbuffer);
+	txbuffer = (uint8_t*)malloc( (4 * (dump_width*dump_height/8)) + HEADER_SIZE);
+	
+	LOGTRACE("dump loaded with width %d height %d\n",dump_width, dump_height);
 
 	init(SPI_NORMAL);
-
+	
 	frame_t frame;
-	uint32_t frame_offset = 0;
+	frame.data = (uint8_t*) malloc(dump_width*dump_height);
+	uint32_t frame_time = 0;
 	if( frame_reader && frame_reader_read_next( frame_reader, &frame, 0 ) == 0 ) {
-		// on first frame, set offset
-		frame_offset = millis() - frame.timestamp;
-		LOGDEBUG( "frame offset: 0x%x", frame_offset );
 	}
 	
 	int skipFrames = 0;
@@ -137,7 +134,7 @@ int main( int argc, char** argv ) {
 				skipFrames += 100;
 			
 		if( frame_reader_has_more( frame_reader ) ) {
-			if( now < ( frame_offset + frame.timestamp ) ) {
+			if( now < frame_time ) {
 					// not yet time for next frame
 					goto no_update;
 			}
@@ -146,69 +143,133 @@ int main( int argc, char** argv ) {
 				LOGERROR( "frame reader failed to read next frame" );
 				break;
 			} else {
+				frame_time = millis() + frame.delay;
 				if( skipFrames ) {
-					frame_offset = millis() - frame.timestamp;
 					skipFrames = 0;
 				}
-				LOGTRACE( "read frame. now: 0x%x", now );
-				LOGTRACE( "frame timestamp: 0x%x", frame.timestamp );
+				LOGTRACE( "read frame now: 0x%x", now );
+				LOGTRACE( "frame time: 0x%x", frame_time );
 			}
 		} else {
 			LOGTRACE( "frame reader reached end of frames, exiting" );
 			break;
 		}
 		
-		memcpy( frameBuffer, frame.data, FRAME_SIZE );
-		memcpy (txbuffer, cmd[PLANES_4], HEADER_SIZE);		
+		memcpy( frameBuffer, frame.data, (dump_width*dump_height) );
 
 		int byteIdx = 0;
 		bool shades16 = true;		
 		
-		for (int j = 0; j < 32; ++j)
-			{
-				for (int i = 0; i < 128; i += 8)
+		if ( deviceType == PIN2DMD_HD && dump_width == 256 && dump_height == 64){
+			memcpy (txbuffer, cmd[PLANES_8], HEADER_SIZE);	
+			for (int j = 0; j < dump_height; ++j)
 				{
-					int bd0, bd1, bd2, bd3;
-					bd0 = 0;
-					bd1 = 0;
-					bd2 = 0;
-					bd3 = 0;
-					for (int v = 7; v >= 0; v--)
+					for (int i = 0; i < dump_width; i += 8)
 					{
-						// pixel colour
-						int pixel = frameBuffer[j * 128 + i + v];
+						int bd0, bd1;
+						bd0 = 0;
+						bd1 = 0;
+						for (int v = 7; v >= 0; v--)
+						{
+							// pixel colour
+							int pixel = frameBuffer[j * dump_width + i + v];
 
-						bd0 <<= 1;
-						bd1 <<= 1;
-						bd2 <<= 1;
-						bd3 <<= 1;
+							bd0 <<= 1;
+							bd1 <<= 1;
 
-						if (!shades16)
-							if (pixel == 3)
-								pixel = 15;
-							else if (pixel == 2)
-								pixel = 4;
+							if (pixel & 1)
+								bd0 |= 1;
+							if (pixel & 2)
+								bd1 |= 1;
+						}
 
-						if (pixel & 1)
-							bd0 |= 1;
-						if (pixel & 2)
-							bd1 |= 1;
-						if (pixel & 4)
-							bd2 |= 1;
-						if (pixel & 8)
-							bd3 |= 1;
+						txbuffer[byteIdx + HEADER_SIZE] = bd0;
+						txbuffer[byteIdx + (dump_width*dump_height/8) + HEADER_SIZE] = bd1;
+						byteIdx++;
 					}
-
-					txbuffer[byteIdx + HEADER_SIZE] = bd0;
-					txbuffer[byteIdx + 512 + HEADER_SIZE] = bd1;
-					txbuffer[byteIdx + 1024 + HEADER_SIZE] = bd2;
-					txbuffer[byteIdx + 1536 + HEADER_SIZE] = bd3;
-					byteIdx++;
 				}
-			}
 
-		// Write to UART
-		sendUart(txbuffer, (4 * planesize) + HEADER_SIZE );
+			// Write to UART
+			sendUart(txbuffer, (2 * (dump_width*dump_height/8)) + HEADER_SIZE );
+		} else if ( deviceType == PIN2DMD_XL && dump_width == 192 && dump_height == 64){
+			memcpy (txbuffer, cmd[PLANES_6], HEADER_SIZE);	
+			for (int j = 0; j < dump_height; ++j)
+				{
+					for (int i = 0; i < dump_width; i += 8)
+					{
+						int bd0, bd1;
+						bd0 = 0;
+						bd1 = 0;
+						for (int v = 7; v >= 0; v--)
+						{
+							// pixel colour
+							int pixel = frameBuffer[j * dump_width + i + v];
+
+							bd0 <<= 1;
+							bd1 <<= 1;
+
+							if (pixel & 1)
+								bd0 |= 1;
+							if (pixel & 2)
+								bd1 |= 1;
+						}
+
+						txbuffer[byteIdx + HEADER_SIZE] = bd0;
+						txbuffer[byteIdx + (dump_width*dump_height/8) + HEADER_SIZE] = bd1;
+						byteIdx++;
+					}
+				}
+
+			// Write to UART
+			sendUart(txbuffer, (2 * (dump_width*dump_height/8)) + HEADER_SIZE );
+		} else if ( dump_width == 128 && dump_height == 32) {
+			memcpy (txbuffer, cmd[PLANES_4], HEADER_SIZE);		
+			for (int j = 0; j < dump_height; ++j)
+				{
+					for (int i = 0; i < dump_width; i += 8)
+					{
+						int bd0, bd1, bd2, bd3;
+						bd0 = 0;
+						bd1 = 0;
+						bd2 = 0;
+						bd3 = 0;
+						for (int v = 7; v >= 0; v--)
+						{
+							// pixel colour
+							int pixel = frameBuffer[j * 128 + i + v];
+
+							bd0 <<= 1;
+							bd1 <<= 1;
+							bd2 <<= 1;
+							bd3 <<= 1;
+
+							if (!shades16)
+								if (pixel == 3)
+									pixel = 15;
+								else if (pixel == 2)
+									pixel = 4;
+
+							if (pixel & 1)
+								bd0 |= 1;
+							if (pixel & 2)
+								bd1 |= 1;
+							if (pixel & 4)
+								bd2 |= 1;
+							if (pixel & 8)
+								bd3 |= 1;
+						}
+
+						txbuffer[byteIdx + HEADER_SIZE] = bd0;
+						txbuffer[byteIdx + 512 + HEADER_SIZE] = bd1;
+						txbuffer[byteIdx + 1024 + HEADER_SIZE] = bd2;
+						txbuffer[byteIdx + 1536 + HEADER_SIZE] = bd3;
+						byteIdx++;
+					}
+				}
+
+			// Write to UART
+			sendUart(txbuffer, (4 * planesize) + HEADER_SIZE );
+		}
 	}
 	
 cleanup:

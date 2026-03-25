@@ -1,6 +1,6 @@
 #include <fcntl.h>
 #include <linux/spi/spidev.h>
-#include <pigpio.h>
+#include <gpiod.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,6 +9,9 @@
 #include <sys/time.h>
 #include <termios.h>
 #include <unistd.h>
+#include <pthread.h>
+#include <linux/fb.h>
+#include <sys/mman.h>
 
 #include "log.h"
 #include "pin2mmi.h"
@@ -25,6 +28,32 @@ int planesize = 512;
 bool rawDump = false;
 MMI_STATUS_t Mmi_Status = MMI_SPI_OFF;
 
+// gpiod v2.x variables
+struct gpiod_chip *chip = NULL;
+struct gpiod_line_request *gpio1_request = NULL;
+struct gpiod_line_request *gpio2_request = NULL;
+
+// 6-bit CIE 1931 lookup table
+// Maps 8-bit input (0-255) to 6-bit output (0-63)
+static const uint8_t lumConvTab_6bit[256] = {
+      0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+      0,     0,     0,     1,     1,     1,     1,     1,     1,     1,     1,     1,     1,     1,     1,     1,
+      1,     1,     1,     1,     1,     1,     1,     1,     1,     1,     1,     1,     1,     2,     2,     2,
+      2,     2,     2,     2,     2,     2,     2,     2,     2,     2,     2,     2,     2,     3,     3,     3,
+      3,     3,     3,     3,     3,     3,     3,     3,     3,     4,     4,     4,     4,     4,     4,     4,
+      4,     4,     5,     5,     5,     5,     5,     5,     5,     5,     5,     6,     6,     6,     6,     6,
+      6,     6,     7,     7,     7,     7,     7,     7,     7,     8,     8,     8,     8,     8,     8,     9,
+      9,     9,     9,     9,     9,    10,    10,    10,    10,    10,    11,    11,    11,    11,    11,    12,
+     12,    12,    12,    12,    13,    13,    13,    13,    13,    14,    14,    14,    14,    15,    15,    15,
+     15,    16,    16,    16,    16,    17,    17,    17,    17,    18,    18,    18,    19,    19,    19,    19,
+     20,    20,    20,    21,    21,    21,    22,    22,    22,    22,    23,    23,    23,    24,    24,    24,
+     25,    25,    25,    26,    26,    27,    27,    27,    28,    28,    28,    29,    29,    30,    30,    30,
+     31,    31,    32,    32,    32,    33,    33,    34,    34,    34,    35,    35,    36,    36,    37,    37,
+     37,    38,    38,    39,    39,    40,    40,    41,    41,    42,    42,    43,    43,    44,    44,    45,
+     45,    46,    46,    47,    47,    48,    48,    49,    49,    50,    51,    51,    52,    52,    53,    53,
+     54,    54,    55,    56,    56,    57,    57,    58,    59,    59,    60,    60,    61,    62,    62,    63,
+};
+
 const uint8_t GAMMA_LUT[256] = {
     0,  0,  0,  0,  0,  0,  0,  0,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,
     1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  2,  2,  2,  2,
@@ -35,8 +64,24 @@ const uint8_t GAMMA_LUT[256] = {
     23, 24, 24, 24, 25, 25, 25, 26, 26, 27, 27, 27, 28, 28, 29, 29, 29, 30, 30, 31, 31, 31, 32, 32, 33, 33, 34, 34, 35,
     35, 35, 36, 36, 37, 37, 38, 38, 39, 39, 40, 40, 41, 41, 42, 42, 43, 43, 44, 44, 45, 45, 46, 47, 47, 48, 48, 49, 49,
     50, 50, 51, 52, 52, 53, 53, 54, 55, 55, 56, 56, 57, 58, 58, 59, 60, 60, 61, 62, 62, 63, 63, 63 };
+	
+const uint8_t REVERSE_LUT_8bit[64] = {
+      0,   8,  54,  71,  82,  91,  99, 106, 113, 118, 124, 128,
+    133, 137, 142, 146, 149, 153, 156, 160, 163, 166, 169, 172,
+    175, 178, 181, 183, 186, 188, 191, 193, 196, 198, 200, 202,
+    205, 207, 209, 211, 213, 215, 217, 219, 221, 223, 225, 226,
+    228, 230, 232, 234, 235, 237, 239, 240, 242, 244, 245, 247,
+    248, 250, 251, 255
+};
 
-const uint8_t* GAMMA_TABLE = GAMMA_LUT;
+const uint8_t REVERSE_LUT_6bit[64] = {
+    0,  10, 15, 18, 20, 22, 24, 26, 27, 29, 30, 31, 32, 33, 35, 35, // 0-15
+    36, 37, 38, 39, 40, 41, 41, 42, 43, 44, 44, 45, 46, 46, 47, 48, // 16-31
+    48, 49, 49, 50, 51, 51, 52, 52, 53, 53, 54, 54, 55, 55, 56, 56, // 32-47
+    57, 57, 58, 58, 59, 59, 60, 60, 60, 61, 61, 62, 62, 62, 63, 63  // 48-63
+};
+
+const uint8_t* GAMMA_TABLE = lumConvTab_6bit;
 
 uint8_t cmd[][4] = {
     { 0x02, 0xc3, 0xe8, 0x00 }, // dump with tick
@@ -44,41 +89,142 @@ uint8_t cmd[][4] = {
     { 0x81, 0xc3, 0xe7, 0xff }, // config mode
     { 0x01, 0xc3, 0xe7, 0x00 }, // switch palette
     { 0x81, 0xc3, 0xe7, 0x00 }, // 4 planes
+    { 0x81, 0xc3, 0xe8, 0x06 }, // 6 planes
+    { 0x81, 0xc3, 0xe8, 0x08 }, // 8 planes
     { 0x81, 0xc3, 0xe8, 0x00 }, // n planes
     { 0x81, 0xc3, 0xe9, 0x00 }, // RGB24
     { 0x52, 0x80, 0x20, 0x00 }, // RGB666
     { 'm', 'm', 'i', 0x00 },    // MMI_SPI_NORMAL
     { 'm', 'm', 'i', 0x01 },    // MMI_SPI_RGB
     { 'm', 'm', 'i', 0x02 },    // MMI_SPI_EXTERNAL_RGB
+    { 'm', 'm', 'i', 0x03 },    // MMI_SPI_DUMP
 };
 
 
-uint8_t revertGamma(uint8_t val){
-	int retval;
-	if (val == 63)
-		return 255;
-	for (int retval = 0; retval < 256; retval ++){
-		if (GAMMA_TABLE[retval] >= val)
-			return retval;
-	}
-	return 0;
-
-}
-
 int setupGpio() {
-	if( gpioInitialise() < 0 )
+	LOGDEBUG( "setup GPIO" );
+	// Open GPIO chip
+	chip = gpiod_chip_open("/dev/gpiochip0");
+	if (!chip)
 		return 1;
-	gpioSetMode( GPIO1, PI_INPUT );
-	gpioSetPullUpDown( GPIO1, PI_PUD_DOWN );
-	gpioWrite(GPIO2,false);	
+	
+	// Configure GPIO1 as input with pull-down (libgpiod v2.x)
+	struct gpiod_line_settings *settings1;
+	struct gpiod_line_config *line_cfg1;
+	struct gpiod_request_config *req_cfg1;
+	unsigned int offset1 = GPIO1;
+	
+	settings1 = gpiod_line_settings_new();
+	if (!settings1) {
+		gpiod_chip_close(chip);
+		return 1;
+	}
+	
+	gpiod_line_settings_set_direction(settings1, GPIOD_LINE_DIRECTION_INPUT);
+	gpiod_line_settings_set_bias(settings1, GPIOD_LINE_BIAS_PULL_DOWN);
+	
+	line_cfg1 = gpiod_line_config_new();
+	if (!line_cfg1) {
+		gpiod_line_settings_free(settings1);
+		gpiod_chip_close(chip);
+		return 1;
+	}
+	
+	if (gpiod_line_config_add_line_settings(line_cfg1, &offset1, 1, settings1) < 0) {
+		gpiod_line_config_free(line_cfg1);
+		gpiod_line_settings_free(settings1);
+		gpiod_chip_close(chip);
+		return 1;
+	}
+	
+	req_cfg1 = gpiod_request_config_new();
+	if (!req_cfg1) {
+		gpiod_line_config_free(line_cfg1);
+		gpiod_line_settings_free(settings1);
+		gpiod_chip_close(chip);
+		return 1;
+	}
+	
+	gpiod_request_config_set_consumer(req_cfg1, "pin2mmi");
+	
+	gpio1_request = gpiod_chip_request_lines(chip, req_cfg1, line_cfg1);
+	
+	gpiod_request_config_free(req_cfg1);
+	gpiod_line_config_free(line_cfg1);
+	gpiod_line_settings_free(settings1);
+	
+	if (!gpio1_request) {
+		gpiod_chip_close(chip);
+		return 1;
+	}
+	
+	// Configure GPIO2 as output and set to low (libgpiod v2.x)
+	struct gpiod_line_settings *settings2;
+	struct gpiod_line_config *line_cfg2;
+	struct gpiod_request_config *req_cfg2;
+	unsigned int offset2 = GPIO2;
+	
+	settings2 = gpiod_line_settings_new();
+	if (!settings2) {
+		gpiod_line_request_release(gpio1_request);
+		gpiod_chip_close(chip);
+		return 1;
+	}
+	
+	gpiod_line_settings_set_direction(settings2, GPIOD_LINE_DIRECTION_OUTPUT);
+	gpiod_line_settings_set_output_value(settings2, GPIOD_LINE_VALUE_INACTIVE);
+	
+	line_cfg2 = gpiod_line_config_new();
+	if (!line_cfg2) {
+		gpiod_line_settings_free(settings2);
+		gpiod_line_request_release(gpio1_request);
+		gpiod_chip_close(chip);
+		return 1;
+	}
+	
+	if (gpiod_line_config_add_line_settings(line_cfg2, &offset2, 1, settings2) < 0) {
+		gpiod_line_config_free(line_cfg2);
+		gpiod_line_settings_free(settings2);
+		gpiod_line_request_release(gpio1_request);
+		gpiod_chip_close(chip);
+		return 1;
+	}
+	
+	req_cfg2 = gpiod_request_config_new();
+	if (!req_cfg2) {
+		gpiod_line_config_free(line_cfg2);
+		gpiod_line_settings_free(settings2);
+		gpiod_line_request_release(gpio1_request);
+		gpiod_chip_close(chip);
+		return 1;
+	}
+	
+	gpiod_request_config_set_consumer(req_cfg2, "pin2mmi");
+	
+	gpio2_request = gpiod_chip_request_lines(chip, req_cfg2, line_cfg2);
+	
+	gpiod_request_config_free(req_cfg2);
+	gpiod_line_config_free(line_cfg2);
+	gpiod_line_settings_free(settings2);
+	
+	if (!gpio2_request) {
+		gpiod_line_request_release(gpio1_request);
+		gpiod_chip_close(chip);
+		return 1;
+	}
+	
 	return 0;
 }
 
 void resetUart() {
-	// reset UARTRX buffer 
-	gpioWrite(GPIO2,true);
+	// reset UARTRX buffer
+	if (!gpio2_request) {
+		// GPIO not yet initialized
+		return;
+	}
+	gpiod_line_request_set_value(gpio2_request, GPIO2, GPIOD_LINE_VALUE_ACTIVE);
 	usleep( 10000 );
-	gpioWrite(GPIO2,false);
+	gpiod_line_request_set_value(gpio2_request, GPIO2, GPIOD_LINE_VALUE_INACTIVE);
 	usleep( 10000 );
 }
 
@@ -108,6 +254,7 @@ int setupUart() {
 	options.c_oflag &= ~OPOST;
 
 	tcsetattr( uart_fd, TCSANOW, &options );
+	tcflush(uart_fd, TCIOFLUSH);
 	return 0;
 }
 
@@ -117,16 +264,14 @@ void sendUart( uint8_t* TransferBuffer, int len ) {
 	
 	size_t total_sent = 0;
 	while( total_sent < len ) {
-		while( gpioRead( GPIO1 ) == 0 ) {
-		}; // wait until device is ready
+		while( gpiod_line_request_get_value(gpio1_request, GPIO1) == GPIOD_LINE_VALUE_INACTIVE ) {}
 		// Perform UART transfer
 		int n = write( uart_fd, TransferBuffer + total_sent, TX_BUFFER_SIZE / 2 );
 		if( n < 0 ) {
 			perror( "UART transfer failed" );
 			exit( 1 );
 		}
-		while( gpioRead( GPIO1 ) == 1 ) {
-		}; // wait until device is ready
+		while( gpiod_line_request_get_value(gpio1_request, GPIO1) == GPIOD_LINE_VALUE_ACTIVE ) {}
 		n = write( uart_fd, TransferBuffer + total_sent + ( TX_BUFFER_SIZE / 2 ), TX_BUFFER_SIZE / 2 );
 		if( n < 0 ) {
 			perror( "UART transfer failed" );
@@ -288,9 +433,32 @@ DeviceMode deviceModeHD[] = {
 	SysXDMD
 };
 
-int getConfig() {
+DeviceMode deviceModeXL[] = {
+	VirtualPinball,
+	SEGA192x64,
+	DotMation
+};
 
-	int ret;
+// use thread to receive UART data since normal UART read misses some bytes at the begining
+typedef struct {
+    size_t packet_size;
+    unsigned char *shared_buffer;
+} uart_context_t;
+
+void* uart_receive_thread(void* arg) {
+    uart_context_t *ctx = (uart_context_t*)arg;
+	size_t received = 0;
+	while (received < ctx->packet_size) {
+		ssize_t n = read(uart_fd, ctx->shared_buffer + received, ctx->packet_size - received);
+		if (n > 0) {
+			received += n;
+		} 
+	}
+    return NULL;
+}
+
+void getConfig() {
+
 	uint8_t OutputPacketBuffer[2052];
 	uint8_t ReceivePacketBuffer[64];
 	memset( OutputPacketBuffer, 0, 2052 );
@@ -300,19 +468,29 @@ int getConfig() {
 
 	memcpy( OutputPacketBuffer, cmd[CONFIG], HEADER_SIZE );
 	OutputPacketBuffer[4] = SENDSETTINGS;
-	LOGTRACE( "send cmd" );
-	sendUart( OutputPacketBuffer, 2052 );
-	usleep( 10000 );
-	LOGTRACE( "read response " );
-	readUart( ReceivePacketBuffer, 62 );
 
-	if( ReceivePacketBuffer[4] == 0x56 ) { // leading V of the version string
+	// setup receive thread to wait for data
+    uart_context_t ctx;
+    ctx.packet_size = 62;
+    ctx.shared_buffer = ReceivePacketBuffer;
+	
+    pthread_t thread_id;
+    pthread_create(&thread_id, NULL, uart_receive_thread, &ctx);
+	
+	//now request config data
+	sendUart( OutputPacketBuffer, 2052 );
+	
+	//wait until receive complete
+    pthread_join(thread_id, NULL);
+	
+	if( ReceivePacketBuffer[4] == 0x56 ) { // check leading V of the version string
 		memcpy( versionString, ReceivePacketBuffer + 4, 6 );
 		memcpy( &config, ReceivePacketBuffer + 10, sizeof( config ) );
 		memcpy( UIDString, ReceivePacketBuffer + 48, 15 );
 		Mmi_Status = (MMI_STATUS_t)ReceivePacketBuffer[47];
 	} else {
-		ret = 1;
+		LOGERROR( "UART receive config failed " );
+		exit( 1 );
 	}
 
 	deviceMode = (DeviceMode)config.mode;
@@ -321,11 +499,17 @@ int getConfig() {
 		deviceType = PIN2DMD_HD;
 		LOGDEBUG( "device type is HD");
 		deviceMode = deviceModeHD[deviceMode];
+	} 
+	else 
+	if (UIDString[0] == 'X' || UIDString[0] == 'S'){
+		deviceType = PIN2DMD_XL;
+		LOGDEBUG( "device type is XL");
+		deviceMode = deviceModeXL[deviceMode];
 	}
-
+	
 	LOGDEBUG( "device mode is %i", deviceMode );
 	LOGDEBUG( "rgb sequence is %i", rgbSequence );
-
+	
 	switch( deviceMode ) {
 	case WPC: // WPC
 		numberOfPlanes = 3;
@@ -382,6 +566,12 @@ int getConfig() {
 	case SysXDMD: //  SysXDMD
 		numberOfPlanes = 1;
 		break;
+	case SEGA192x64: //  192x64
+	case DotMation: //  192x64
+		planesize = 1536;
+		numberOfPlanes = 2;
+		rawDump = false;
+		break;
 	case Capcom256: //  Capcom256
 		planesize = 2048;
 		numberOfPlanes = 4;
@@ -391,7 +581,6 @@ int getConfig() {
 		break;
 	}
 
-	return ret;
 }
 
 void reset() {
@@ -420,10 +609,11 @@ void init(uint8_t spi_init, bool withReset) {
 
 	setupGpio();
 	setupUart();
+	
 	if (withReset)
 		reset();
+
 	setupSpi();
-	
 	resetUart();
 
 	uint8_t* txbuffer;
@@ -440,20 +630,36 @@ void init(uint8_t spi_init, bool withReset) {
 		WIDTH = 256;
 		HEIGHT = 64;
 		CHUNK_SIZE = 8192;
+	} else
+	if( deviceType == PIN2DMD_XL ) {
+		RX_BUFFER_SIZE = 6144;
+		DISPLAYBUFFER_SIZE = 36864;
+		WIDTH = 192;
+		HEIGHT = 64;
+		CHUNK_SIZE = 6144;
 	}
 
 	free( txbuffer );
 }
 
 void deInit() {
-	gpioTerminate();
+	
+	tcflush(uart_fd, TCIOFLUSH);
 	close( uart_fd );
 	close( spi_fd );
+
+	if (gpio1_request)
+		gpiod_line_request_release(gpio1_request);
+	if (gpio2_request)
+		gpiod_line_request_release(gpio2_request);
+	if (chip)
+		gpiod_chip_close(chip);
+	
 }
 
 uint8_t* create_FrameBuffer( int width, int height, DeviceMode deviceMode, uint8_t* source, uint8_t* dest,
                              uint8_t* palette, bool rgb565 ) {
-	LOGTRACE("creating frame buffer");
+	LOGTRACE("creating frame buffer width %d height %d", width, height);
 	uint8_t shades4[4] = { 0, 1, 4, 15 };
 	rgb24* rgbbuffer = (rgb24*)dest;
 	rgb24* palette24 = (rgb24*)palette;
@@ -552,6 +758,11 @@ uint8_t* create_FrameBuffer( int width, int height, DeviceMode deviceMode, uint8
 					break;
 				case SysXDMD: // SysXDMD
 					val = ( ( source[( jj * 16 ) + ii] >> kk ) & 0x01 ) + ( ( ( source[( jj * 16 ) + ii] >> kk ) & 0x01 ) * 2 );
+					break;
+				case SEGA192x64: // 192x64
+				case DotMation: 
+					val = ( ( source[( jj * 24 ) + ii] >> kk ) & 0x01 ) +
+					      ( ( ( source[( jj * 24 ) + ii + 1536] >> kk ) & 0x01 ) * 2 );
 					break;
 				case Capcom256: // Capcom256
 					tmp = ( ( source[( jj * 32 ) + ii] >> kk ) & 0x01 ) + ( ( source[( jj * 32 ) + ii + 2048] >> kk ) & 0x01 ) +
@@ -904,21 +1115,15 @@ uint8_t* create_RGBFromFrame(uint16_t width, uint16_t height, uint8_t* src, uint
 
 		for (int k = 0; k < BITS_PER_CHANNEL; k++) {
 			int val = src[src_idx];
-			pixel_r <<= 1;
-			pixel_g <<= 1;
-			pixel_b <<= 1;
-			pixel_rl <<= 1;
-			pixel_gl <<= 1;
-			pixel_bl <<= 1;
-			pixel_r |= val & 1;
-			pixel_b |= (val >> 1) & 1;
-			pixel_g |= (val >> 2) & 1;
-			pixel_rl |= (val >> 3) & 1;
-			pixel_gl |= (val >> 4) & 1;
-			pixel_bl |= (val >> 5) & 1;
+			pixel_r  |= ((val >> 0) & 1) << k;
+            pixel_b  |= ((val >> 1) & 1) << k;
+            pixel_g  |= ((val >> 2) & 1) << k;
+            pixel_rl |= ((val >> 3) & 1) << k;
+            pixel_bl |= ((val >> 4) & 1) << k;
+            pixel_gl |= ((val >> 5) & 1) << k;
 			src_idx += elements;
 		}
-	
+		
 		switch (rgbSequence) {
 		case PANEL_RBG: // RGB panels
 			red = pixel_r;
@@ -931,7 +1136,7 @@ uint8_t* create_RGBFromFrame(uint16_t width, uint16_t height, uint8_t* src, uint
 			break;
 		case PANEL_GRB: // BGR panels
 			red = pixel_b;
-			blue = pixel_r;
+			blue = pixel_g;
 			green = pixel_r;
 			// lower half of display
 			lred = pixel_bl;
@@ -977,22 +1182,22 @@ uint8_t* create_RGBFromFrame(uint16_t width, uint16_t height, uint8_t* src, uint
 		}
 		
 		if (!rgb565){
-			rgb24dest[i].red = revertGamma(red);
-			rgb24dest[i].green = revertGamma(green);
-			rgb24dest[i].blue = revertGamma(blue);
-			rgb24dest[i + elements].red = revertGamma(lred);
-			rgb24dest[i + elements].green = revertGamma(lgreen);
-			rgb24dest[i + elements].blue = revertGamma(lblue);
+			rgb24dest[i].red = REVERSE_LUT_8bit[red];
+			rgb24dest[i].green = REVERSE_LUT_8bit[green];
+			rgb24dest[i].blue = REVERSE_LUT_8bit[blue];
+			rgb24dest[i + elements].red = REVERSE_LUT_8bit[lred];
+			rgb24dest[i + elements].green = REVERSE_LUT_8bit[lgreen];
+			rgb24dest[i + elements].blue = REVERSE_LUT_8bit[lblue];
 		} else {
-			rgb565dest[i] = ((revertGamma(red) & 0b11111000) << 8) | ((revertGamma(green) & 0b11111100) << 3) | (revertGamma(blue) >> 3); 
-			rgb565dest[i + elements] = ((revertGamma(lred) & 0b11111000) << 8) | ((revertGamma(lgreen) & 0b11111100) << 3) | (revertGamma(lblue) >> 3); 
+			rgb565dest[i] = (uint16_t) ((REVERSE_LUT_6bit[red] & 0b111110) << 10) | ((REVERSE_LUT_6bit[green] & 0b111111) << 5) | ((REVERSE_LUT_6bit[blue] & 0b111110) >> 1); 
+			rgb565dest[i + elements] = (uint16_t)((REVERSE_LUT_6bit[lred] & 0b111110) << 10) | ((REVERSE_LUT_6bit[lgreen] & 0b111111) << 5) | ((REVERSE_LUT_6bit[lblue] & 0b111110) >> 1) ; 
 		}
 	}
 	return dest;
 };
 
 uint8_t* create_RGBHDFromFrame(uint16_t width, uint16_t height, uint8_t* src, uint8_t* dest, bool rgb565) {
-	LOGTRACE("sorting RGB24 HD from display buffer (width=%i, height=%i)", width, height);
+	LOGTRACE("presorting RGB24 HD from display buffer (width=%i, height=%i, buffermode=%i)", width, height, config.buffermode);
 
 	int elements = width * height / 2;
 	int frameSize = (elements * 6);
@@ -1000,7 +1205,7 @@ uint8_t* create_RGBHDFromFrame(uint16_t width, uint16_t height, uint8_t* src, ui
 
 	int src_idx = 0;
 	int tmp_idx = 0;
-
+	
 	if (config.buffermode == 0) {
 		for (int l = 0; l < frameSize / 2; l++) {
 			tmp[tmp_idx + (width / 2)] = src[src_idx];
@@ -1008,7 +1213,7 @@ uint8_t* create_RGBHDFromFrame(uint16_t width, uint16_t height, uint8_t* src, ui
 			src_idx += 2;
 			tmp_idx++;
 			if ((src_idx) % width == 0)
-				src_idx += width / 2;
+				tmp_idx += width / 2;
 		}
 	}
 	else {
@@ -1032,4 +1237,213 @@ uint8_t* create_RGBHDFromFrame(uint16_t width, uint16_t height, uint8_t* src, ui
 
 	free(tmp);
 	return dest;
+}
+
+int fb_init ( struct fb_var_screeninfo* vinfo ){
+	int fb_fd = open("/dev/fb0", O_RDWR);
+    if (fb_fd == -1) { perror("Fehler: /dev/fb0"); exit(1); }
+	
+    ioctl(fb_fd, FBIOGET_VSCREENINFO, vinfo);
+    // map 16-bit framebuffer
+	return fb_fd;
+}
+
+void fb_clear( int fb_fd, struct fb_var_screeninfo vinfo ){
+	
+	long screensize = vinfo.yres_virtual * vinfo.xres_virtual * 2;
+	uint16_t* fbp = (uint16_t*)mmap(0, screensize, PROT_READ | PROT_WRITE, MAP_SHARED, fb_fd, 0);
+	// clear screen
+    memset(fbp, 0, screensize);
+	munmap(fbp, screensize);
+	
+}
+
+void fb_displayRGB565( int fb_fd, struct fb_var_screeninfo vinfo , uint16_t* img, int src_w, int src_h, int mode){
+	
+	long screensize = vinfo.yres_virtual * vinfo.xres_virtual * 2;
+    uint16_t* fbp = (uint16_t*)mmap(0, screensize, PROT_READ | PROT_WRITE, MAP_SHARED, fb_fd, 0);
+	
+	int target_w = vinfo.xres;
+	int target_h = vinfo.yres;
+	switch (mode) {
+		case 1:{	//4:1
+			target_h = target_w / 4; 
+		}
+		break;
+		case 2:{	//2:1
+			target_h = target_w / 2; 
+		}
+		break;
+		case 3:{	//3:1
+			target_h = target_w / 3; 
+		}
+		break;
+		default:
+		break;
+	}
+	LOGTRACE("screen x = %d screen y = %d target w = %d target h %d\n", vinfo.xres, vinfo.yres, target_w, target_h);
+	
+    // limit if calculated target_h is larger than screen
+    if (target_h > vinfo.yres) {
+        target_h = vinfo.yres;
+    }
+
+    int offset_x = (vinfo.xres - target_w) / 2;
+    int offset_y = (vinfo.yres - target_h) / 2;
+	
+	for (int y = 0; y < target_h; y++) {
+		for (int x = 0; x < target_w; x++) {
+			// map destination coordinates back to 128x32 source
+			int src_x = (x * src_w) / target_w;
+			int src_y = (y * src_h) / target_h;
+			
+			// write pixel with offset for centering
+			fbp[(x + offset_x) + (y + offset_y) * vinfo.xres] = img[src_y * src_w + src_x];;
+		}
+	}
+	
+	munmap(fbp, screensize);
+}
+
+void fb_displayRGB( int fb_fd, struct fb_var_screeninfo vinfo , rgb24* img, int src_w, int src_h, int mode){
+	
+	long screensize = vinfo.yres_virtual * vinfo.xres_virtual * 2;
+    uint16_t* fbp = (uint16_t*)mmap(0, screensize, PROT_READ | PROT_WRITE, MAP_SHARED, fb_fd, 0);
+
+    // --- scaling logic for 4:2 (2:1) ---
+    int target_w = vinfo.xres;
+    int target_h = vinfo.yres;
+	switch (mode) {
+		case 1:{	//4:1
+			target_h = target_w / 4; 
+		}
+		break;
+		case 2:{	//2:1
+			target_h = target_w / 2; 
+		}
+		break;
+		case 3:{	//3:1
+			target_h = target_w / 3; 
+		}
+		break;
+		default:
+		break;
+	}
+
+    // limit if calculated target_h is larger than screen
+    if (target_h > vinfo.yres) {
+        target_h = vinfo.yres;
+    }
+
+    int offset_x = (vinfo.xres - target_w) / 2;
+    int offset_y = (vinfo.yres - target_h) / 2;
+
+    for (int y = 0; y < target_h; y++) {
+        for (int x = 0; x < target_w; x++) {
+			// map destination coordinates back to 128x32 source
+            int src_x = (x * src_w) / target_w;
+            int src_y = (y * src_h) / target_h;
+            
+            rgb24 p = img[src_y * src_w + src_x];
+
+            // convert 888 -> 565
+            uint16_t color16 = ((p.red >> 3) << 11) | ((p.green >> 2) << 5) | (p.blue >> 3);
+
+            // write pixel with offset for centering
+            fbp[(x + offset_x) + (y + offset_y) * vinfo.xres] = color16;
+        }
+    }
+
+    munmap(fbp, screensize);
+}
+
+void fb_deInit (int fb_fd){
+    close(fb_fd);
+}
+
+// dump display data to stdout
+void dump_screen( uint32_t tick, uint8_t* p ) {
+	int width = 128;
+	int height = 32;
+	if (planesize == 2048){
+		width = 256; height = 64;
+	} else if (planesize == 1536){
+		width = 192; height = 64;
+	}
+	const char* hex_digits = "0123456789ABCDEF";
+	int y = 0, x = 0;
+	printf("0x%x\n", tick);
+	for( y = 0; y < height; y++ ) {
+		for( x = 0; x < width; x++ ) {
+			printf( "%c", hex_digits[p[y * width + x]] );
+		}
+		printf( "\n" );
+	}
+	printf( "\n" );
+}
+
+void dump_file_init(char* filePath, char* filePathRaw){
+	int width = 128;
+	int height = 32;
+	if (planesize == 2048){
+		width = 256; height = 64;
+	} else if (planesize == 1536){
+		width = 192; height = 64;
+	}
+	LOGDEBUG("writing dump to %s\n",filePath);
+	if (rawDump) 
+	{	//write rawdump header
+			LOGDEBUG("writing raw dump to %s\n",filePathRaw);
+			FILE* fileRaw = fopen(filePathRaw, "ab");
+			if (fileRaw)
+			{
+				fputc(0x52, fileRaw); //R
+				fputc(0x41, fileRaw); //A
+				fputc(0x57, fileRaw); //W
+				fputc(0x00, fileRaw); //
+				fputc(0x01, fileRaw); // version
+				fputc(width, fileRaw);  // width
+				fputc(height, fileRaw);   // height
+				fputc(numberOfPlanes, fileRaw);
+				fclose(fileRaw);
+			}
+	}
+}
+
+int32_t millis( void ) {
+	struct timeval tv;
+	gettimeofday( &tv, NULL );
+	return (int32_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
+}
+
+void dump_file(char* filePath, char* filePathRaw, uint32_t tick , uint8_t* p, uint8_t* raw) {
+	int width = 128;
+	int height = 32;
+	if (planesize == 2048){
+		width = 256; height = 64;
+	} else if (planesize == 1536){
+		width = 192; height = 64;
+	}
+	LOGTRACE("write text dump width %d height %d\n", width, height);
+	FILE* file = fopen(filePath, "a");
+	const char* hex_digits = "0123456789ABCDEF";
+	int y = 0, x = 0;
+	fprintf(file, "0x%x%c%c", tick,0x0D,0x0A);
+	for( y = 0; y < height; y++ ) {
+		for( x = 0; x < width; x++ ) {
+			fprintf(file, "%c", hex_digits[p[y * width + x]] );
+		}
+		fprintf(file, "%c%c",0x0D,0x0A);
+	}
+	fprintf(file, "%c%c",0x0D,0x0A);
+	fclose(file);
+	
+	if (rawDump) {
+		FILE* fileRaw = fopen(filePathRaw, "ab");
+		if (fileRaw){
+			fwrite(&tick, 1, 4, fileRaw);
+			fwrite(raw, 1, numberOfPlanes * planesize, fileRaw);
+			fclose(fileRaw);
+		}
+	}
 }

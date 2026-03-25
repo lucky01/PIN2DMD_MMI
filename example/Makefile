@@ -1,7 +1,7 @@
 # Compiler and flags
 CC              = g++
 CFLAGS          = -g $(INCDIR)
-LDFLAGS         = -lpigpio
+LDFLAGS         = -lgpiod
 
 # Directories
 HOME_DIR        = $(HOME)
@@ -20,7 +20,7 @@ OBJS            = $(SRCS:.c=.o)
 TARGETS         = $(BUILD_DIR)/dmd_player \
                   $(BUILD_DIR)/dump_dmd \
                   $(BUILD_DIR)/display_ppm \
-                  $(BUILD_DIR)/screenshot \
+                  $(BUILD_DIR)/screenmirror \
                   $(BUILD_DIR)/spi_loop \
                   $(BUILD_DIR)/reset
 
@@ -41,7 +41,7 @@ $(BUILD_DIR)/dump_dmd: dump_dmd.o ../include/pin2mmi.o ../include/log.o
 $(BUILD_DIR)/display_ppm: display_ppm.o ../include/pin2mmi.o ../include/log.o
 	$(CC) -I$(INCDIR) -o $@ $^ $(LDFLAGS)
 
-$(BUILD_DIR)/screenshot: screenshot.o ../include/pin2mmi.o ../include/log.o
+$(BUILD_DIR)/screenmirror: screenmirror.o ../include/pin2mmi.o ../include/log.o
 	$(CC) -I$(INCDIR) -o $@ $^ $(LDFLAGS)
 
 $(BUILD_DIR)/spi_loop: spi_loop.o ../include/pin2mmi.o ../include/log.o
@@ -56,6 +56,6 @@ $(BUILD_DIR)/reset: reset.o ../include/pin2mmi.o ../include/log.o
 
 # Clean build artifacts
 clean:
-	rm -f *.o $(TARGETS)
+	rm -f *.o $(TARGETS) ../include/*.o
 
 .PHONY: all clean

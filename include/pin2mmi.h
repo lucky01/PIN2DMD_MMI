@@ -2,6 +2,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <linux/fb.h>
 
 #define UART_DEVICE "/dev/ttyAMA0" // or /dev/serial0
 #define SPI_DEVICE "/dev/spidev0.0"
@@ -20,12 +21,15 @@
 #define CONFIG 2
 #define PALETTE 3
 #define PLANES_4 4
-#define PLANES_N 5
-#define RGB 6
-#define RAW 7
-#define SPI_NORMAL 8
-#define SPI_RGB 9
-#define SPI_EXTERNAL_RGB 10
+#define PLANES_6 5
+#define PLANES_8 6
+#define PLANES_N 7
+#define RGB 8
+#define RAW 9
+#define SPI_NORMAL 10
+#define SPI_RGB 11
+#define SPI_EXTERNAL_RGB 12
+#define SPI_DUMP 13
 
 #define HEADER_SIZE 4
 #define TX_BUFFER_SIZE 256
@@ -43,7 +47,8 @@ typedef enum {
 	MMI_SPI_OFF = 0,
 	MMI_SPI_NORMAL,
 	MMI_SPI_RGB,
-	MMI_SPI_EXTERNAL_RGB
+	MMI_SPI_EXTERNAL_RGB,
+	MMI_SPI_DUMP
 }MMI_STATUS_t;
 
 typedef enum { 	
@@ -64,6 +69,8 @@ typedef enum {
 	Sleic,
 	HomePin,
 	SysXDMD,
+	SEGA192x64 = 25,
+	DotMation = 26,
 	Capcom256 = 30
 } DeviceMode;
 	
@@ -95,6 +102,7 @@ typedef struct configDescriptor {
 } configDescriptor;
 
 int setupGpio();
+
 int setupUart();
 void sendUart( uint8_t* TransferBuffer, int len );
 void readUart( uint8_t* TransferBuffer, int len );
@@ -102,7 +110,7 @@ int setupSpi();
 void readSpi( uint8_t* rxBuffer, int len );
 void transferSpi( uint8_t* txBuffer, uint8_t* rxBuffer );
 
-int getConfig();
+void getConfig();
 
 void init( uint8_t spi_init, bool withReset = false );
 void deInit();
@@ -121,9 +129,21 @@ uint8_t* scaleDouble( uint16_t destWidth, uint16_t destHeight, uint8_t* src, uin
 uint8_t* create_RGBFromFrame(uint16_t width, uint16_t height, uint8_t* src, uint8_t* dest, bool rgb565 = false );
 uint8_t* create_RGBHDFromFrame(uint16_t width, uint16_t height, uint8_t* src, uint8_t* dest, bool rgb565 = false);
 
+int fb_init (struct fb_var_screeninfo* vinfo);
+void fb_clear( int fb_fd, struct fb_var_screeninfo vinfo );
+void fb_displayRGB565( int fb_fd, struct fb_var_screeninfo vinfo , uint16_t* img, int src_w, int src_h, int mode);
+void fb_displayRGB( int fb_fd, struct fb_var_screeninfo vinfo , rgb24* img, int src_w, int src_h, int mode);
+void fb_deInit (int fb_fd);
+
+int32_t millis( void );
+void dump_screen( uint32_t tick, uint8_t* p );
+void dump_file_init(char* filePath, char* filePathRaw);
+void dump_file(char* filePath, char* filePathRaw, uint32_t tick , uint8_t* p, uint8_t* raw);
+
 extern DeviceMode deviceMode;
 extern uint8_t numberOfPlanes;
 extern int planesize;
+extern bool rawDump;
 extern const uint8_t* GAMMA_TABLE;
 extern uint8_t cmd[][4];
 extern char UIDString[16];
@@ -131,6 +151,8 @@ extern MMI_STATUS_t Mmi_Status;
 extern char versionString[6];
 extern DeviceType deviceType;
 extern int uart_fd, spi_fd;
+extern struct gpiod_line_request *gpio1_request;
+extern struct gpiod_line_request *gpio2_request;
 
 extern int RX_BUFFER_SIZE;
 extern int DISPLAYBUFFER_SIZE;

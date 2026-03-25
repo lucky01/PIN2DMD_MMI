@@ -6,7 +6,7 @@ LIBSERUM_DIR = ../../libserum
 # Compiler and flags
 CC  = g++
 CFLAGS  = $(INCDIR) -I$(LIBSERUM_DIR)/src -I$(INCLUDE_DIR)
-LDFLAGS = -L../../libserum/build -Wl,-Bstatic -lserum -Wl,-Bdynamic -lpigpio
+LDFLAGS = -L../../libserum/build -Wl,-Bstatic -lserum -Wl,-Bdynamic -lgpiod
 
 # Source files and objects
 SRCS            = ../include/pin2mmi.c \

@@ -8,7 +8,7 @@
 #include <sys/ioctl.h>
 #include <termios.h>
 #include <unistd.h>
-#include <pigpio.h>
+#include <gpiod.h>
 #include "log.h"
 #include "pin2mmi.h"
 #include <getopt.h>
@@ -112,31 +112,39 @@ int main( int argc, char** argv ) {
 
 	while( !interrupt_received ) {
 
-		gpioWrite(GPIO2,true); // get next frame
+		gpiod_line_request_set_value(gpio2_request, GPIO2, GPIOD_LINE_VALUE_ACTIVE);// get next frame
 
-		while (gpioRead(GPIO1) == 1){};	// wait until next frame is ready
+		while (gpiod_line_request_get_value(gpio1_request, GPIO1) == GPIOD_LINE_VALUE_ACTIVE){};	// wait until next frame is ready
 		
 		transferSpi(displayBuffer, rxbuffer);
 
-		gpioWrite(GPIO2,false);
+		gpiod_line_request_set_value(gpio2_request, GPIO2, GPIOD_LINE_VALUE_INACTIVE);// get next frame
 
-		if (deviceType != PIN2DMD_HD){
+		if (deviceType == PIN2DMD_HD){
+			// PIN2DMD EVO256x64
+			// use RGB565 for display rendering
+			if (planesize == 2048) {
+				create_FrameBuffer( 256, 64, deviceMode, rxbuffer, (uint8_t*) rgb565bufferHD,(uint8_t*) palette565, true);
+				displayBuffer = create_FrameFromRGB565HD( 256, 64, rgb565bufferHD, displayBuffer );
+			} else {
+				create_FrameBuffer( 128, 32, deviceMode, rxbuffer, (uint8_t*) rgb565buffer,(uint8_t*) palette565, true);
+				scaleHD(256, 64, (uint8_t*) rgb565buffer, (uint8_t*) rgb565bufferHD, 2);
+				displayBuffer = create_FrameFromRGB565HD( 256, 64, rgb565bufferHD, displayBuffer );
+
+				// use RGB24 for display rendering
+				/*create_FrameBuffer( 128, 32, deviceMode, rxbuffer, (uint8_t*) rgbbuffer,(uint8_t*) palette);
+				scaleHD(256, 64, (uint8_t*) rgbbuffer, (uint8_t*) rgbbufferHD, 3);
+				displayBuffer = create_FrameFromRGB24HD( 256, 64, (uint8_t*)rgbbufferHD, displayBuffer );*/
+			}
+			
+		} else if (deviceType == PIN2DMD_XL) {
+			// PIN2DMD EVO192x64
+			create_FrameBuffer( 192, 64, deviceMode, rxbuffer, (uint8_t*) rgbbufferHD,(uint8_t*) palette);
+			displayBuffer = create_FrameFromRGB24( 192, 64, rgbbufferHD, displayBuffer );
+		} else {
 			// PIN2DMD EVO128x32
-
 			create_FrameBuffer( 128, 32, deviceMode, rxbuffer, (uint8_t*) rgbbuffer,(uint8_t*) palette);
 			displayBuffer = create_FrameFromRGB24( 128, 32, rgbbuffer, displayBuffer );
-		} else {
-			// PIN2DMD EVO256x64
-
-			// use RGB565 for display rendering
-			create_FrameBuffer( 128, 32, deviceMode, rxbuffer, (uint8_t*) rgb565buffer,(uint8_t*) palette565, true);
-			scaleHD(256, 64, (uint8_t*) rgb565buffer, (uint8_t*) rgb565bufferHD, 2);
-			displayBuffer = create_FrameFromRGB565HD( 256, 64, rgb565bufferHD, displayBuffer );
-			
-			// use RGB24 for display rendering
-			/*create_FrameBuffer( 128, 32, deviceMode, rxbuffer, (uint8_t*) rgbbuffer,(uint8_t*) palette);
-			scaleHD(256, 64, (uint8_t*) rgbbuffer, (uint8_t*) rgbbufferHD, 3);
-			displayBuffer = create_FrameFromRGB24HD( 256, 64, (uint8_t*)rgbbufferHD, displayBuffer );*/
 		}
 
 		transferSpi(displayBuffer, rxbuffer);

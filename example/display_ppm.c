@@ -79,7 +79,7 @@ int main( int argc, char** argv ) {
 	// Determine the file size
 	fseek(file_fd, 0, SEEK_END);
 	fileSize = ftell(file_fd);
-	if (fileSize != 12302 && fileSize != 49166) {
+	if (fileSize != 12302 && fileSize != 36878 && fileSize != 49166) {
 		LOGERROR( "Wrong filesize" );
 		exit( 1 );
 	}
@@ -98,6 +98,10 @@ int main( int argc, char** argv ) {
 	}
 	else if (fileSize == 49166 && deviceType == PIN2DMD_HD) {
 		create_FrameFromRGB24HD( 256, 64, rgbBuffer, displayBuffer);
+	}
+	else if (fileSize == 36878 && deviceType == PIN2DMD_XL) {
+		create_FrameFromRGB24( 192, 64, (rgb24*) rgbBuffer, displayBuffer);
+	
 	} else {
 		create_FrameFromRGB24( 128, 32, (rgb24*) rgbBuffer, displayBuffer);
 	}

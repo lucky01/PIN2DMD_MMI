@@ -2,7 +2,7 @@
 Description=spi-serum
 
 [Service]
-ExecStart=/usr/local/bin/spi-serum /boot/firmware/ serum
+ExecStart=/opt/serum/spi-serum /media/data/ serum
 
 [Install]
 WantedBy=multi-user.target

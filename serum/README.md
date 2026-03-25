@@ -23,13 +23,14 @@ chmod 755 install-serum.sh
 ```
 Usage: spi-serum [options] <altcolor-path> <rom-name>
 Options:
-  -d                                Dump serum frames as hex to stdout
-  -i <IgnoreUnknownFramesTimeout>   Set ignore unknown frames timeout (ms). default dont set
-  -m <MaximumUnknownFramesToSkip>   Set maximum unknown frames to skip. default dont set
-  -l <loglevel>                     Set log level (0-5)
-  -f <dump-file>                        Read frames from given file instead of SPI input
-  -r                                    Reset PIN2DMD at startup
-```
+  -d <dump>                             Dump input frames to give path
+  -s <screen>                           display colored frames on screen (mode 0-3)
+  -o <monochrome>                       display monochrome frames on screen (mode 0-3)
+  -f <read-file>                        Read frames from given file instead of SPI input
+  -r <reset>                            Reset PIN2DMD at startup
+  -i <IgnoreUnknownFramesTimeout>       Set ignore unknown frames timeout (ms). default dont set
+  -m <MaximumUnknownFramesToSkip>       Set maximum unknown frames to skip. default dont set
+  -l <loglevel>                         Set log level (0-5)
 
 ## License
 
