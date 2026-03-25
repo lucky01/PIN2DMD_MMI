@@ -1,0 +1,9 @@
+[Unit]
+Description=AnimClock
+
+[Service]
+ExecStart=/opt/AnimClock/animclock.sh
+
+[Install]
+WantedBy=multi-user.target
+
