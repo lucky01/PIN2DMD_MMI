@@ -79,4 +79,3 @@ Options:
     -Y           : Height
     -X           : Width
     -F           : Filename (default /tmp/meteo.png)
-
