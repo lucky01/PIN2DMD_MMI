@@ -252,8 +252,6 @@ uint32_t updateV1Rotations(v1rotations* rot, rgb24* palette)
 }
 
 uint16_t* updateDmd( Serum_Frame_Struc* pSerum, int render32, int render64, uint8_t* displayBuffer ) {
-	LOGTRACE( "v%i: render32: %i, render64:%i & width32=%i width64=%i create_FrameFromRGB565", pSerum->SerumVersion,
-	          render32, render64, pSerum->width32, pSerum->width64 );
 	static uint16_t* scaleBuffer = NULL;
 	
 	if( render32 && pSerum->width32 > 0 && pSerum->width64 == 0 ) {
@@ -266,15 +264,15 @@ uint16_t* updateDmd( Serum_Frame_Struc* pSerum, int render32, int render64, uint
 			create_FrameFromRGB24HD( pSerum->width32 * 2, 64, (uint8_t*) scaleBuffer, displayBuffer, 1 );
 			return scaleBuffer;
 		} else {
-			if (deviceType == PIN2DMD_XL){
-				displayBuffer = create_FrameFromRGB565( pSerum->width64, 64, pSerum->frame64, displayBuffer );
-			} else {
-				displayBuffer = create_FrameFromRGB565( pSerum->width32, 32, pSerum->frame32, displayBuffer );
-			}
+			displayBuffer = create_FrameFromRGB565( pSerum->width32, 32, pSerum->frame32, displayBuffer );
 		} 
 	} else if( render64 && pSerum->width64 > 0 && pSerum->width32 == 0 ) {
 		LOGTRACE( "v2: render64 & width32=%i width64=%i create_FrameFromRGB565", pSerum->width32, pSerum->width64 );
-		create_FrameFromRGB24HD( pSerum->width64, 64, (uint8_t*)pSerum->frame64, displayBuffer, 1 );
+		if (deviceType == PIN2DMD_XL){
+			displayBuffer = create_FrameFromRGB565( pSerum->width64, 64, pSerum->frame64, displayBuffer );
+		} else {
+			create_FrameFromRGB24HD( pSerum->width64, 64, (uint8_t*)pSerum->frame64, displayBuffer, 1 );
+		}
 		return pSerum->frame64;
 	} else if( pSerum->width32 > 0 && pSerum->width64 > 0 ) {
 		LOGTRACE( "v2: HD render64: %i, render64:%i & width32=%i width64=%i create_FrameFromRGB565", render32, render64,
