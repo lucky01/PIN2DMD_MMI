@@ -13,7 +13,15 @@ Prerequisites for Pi Zero 2W:
 - spi message size set to 8192 (spidev.bufsiz=8192 added to cmdline.txt)
 - gpiod installed (apt install libgpiod-dev)
 
-## dmd_player - playback pinmame txt dump files on PIN2DMD
+## Serum - a libserum implementation for PIN2DMD_MMI
+see README.md in serum folder for details
+
+## Anim_clock - a animation clock toolbox for PIN2DMD_MMI
+see README.md in Anim_clock folder for details
+
+
+## Example applications in the example folder :
+### dmd_player - playback pinmame txt dump files on PIN2DMD
 
 ```
 Usage: dmd_player [options] filename
@@ -21,7 +29,7 @@ Options:
   -l <loglevel>                  Set log level (0-5)
 ```
 
-## display_ppm - display 128x32 (256x64 on HD) ppm picture file on PIN2DMD
+### display_ppm - display 128x32 (256x64 on HD) ppm picture file on PIN2DMD
 
 ```
 Usage: display_ppm [options] filename
@@ -29,7 +37,7 @@ Options:
   -l <loglevel>                  Set log level (0-5)
 ```
 
-## screenmirror - mirror display content to framebuffer (HDMI) or save screenshot as 128x32 (256x64 on HD) ppm file
+### screenmirror - mirror display content to framebuffer (HDMI) or save screenshot as 128x32 (256x64 on HD) ppm file
 
 ```
 Usage: screenmirror [options] filename
@@ -39,7 +47,7 @@ Options:
   -l <loglevel>                  Set log level (0-5)
 ```
 
-## dmd_dump - dump pinball input stream to file or stdout
+### dmd_dump - dump pinball input stream to file or stdout
 
 ```
 Usage: dump_dmd [options]
@@ -49,7 +57,7 @@ Options:
   -l <loglevel>                  Set log level (0-5)
 ```
 
-## spi_loop - read real pinball input data and send back to pin2dmd display
+### spi_loop - read real pinball input data and send back to pin2dmd display
 
 ```
 Usage: spi_loop [options]
