@@ -151,8 +151,9 @@ int main( int argc, char** argv ) {
 				LOGTRACE( "frame time: 0x%x", frame_time );
 			}
 		} else {
-			LOGTRACE( "frame reader reached end of frames, exiting" );
-			break;
+			LOGTRACE( "frame reader reached end of frames, rewinding" );
+			frame_reader_rewind(frame_reader);
+			frame_reader_read_next( frame_reader, &frame, 0 );
 		}
 		
 		memcpy( frameBuffer, frame.data, (dump_width*dump_height) );

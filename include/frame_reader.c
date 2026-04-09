@@ -130,6 +130,12 @@ int frame_reader_has_more(frame_reader_t *reader) {
     return reader->has_more_frames;
 }
 
+int frame_reader_rewind(frame_reader_t *reader) {
+    fseek(reader->file, 0, SEEK_SET);
+	reader->has_more_frames = 1;
+	return reader->has_more_frames;
+}
+
 void frame_reader_close(frame_reader_t *reader) {
     if (reader && reader->file) {
         fclose(reader->file);

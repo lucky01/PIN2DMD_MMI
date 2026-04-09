@@ -604,8 +604,9 @@ int main( int argc, char** argv ) {
 					fb_displayRGB565(fb_fd, vinfo, rgb565MonoBuffer, fWidth, fHeight, mode);
 				}
 			} else {
-				LOGTRACE( "frame reader reached end of frames, exiting" );
-				break;
+				LOGTRACE( "frame reader reached end of frames, rewinding" );
+				frame_reader_rewind( frame_reader );
+				frame_reader_read_next( frame_reader, &frame, 0 );
 			}
 		} else {
 

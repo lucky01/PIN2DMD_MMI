@@ -36,6 +36,11 @@ int frame_reader_read_next(frame_reader_t *reader, frame_t *frame, int skipFrame
 int frame_reader_has_more(frame_reader_t *reader);
 
 /**
+ * Rewind to first frame
+*/
+int frame_reader_rewind(frame_reader_t *reader);
+
+/**
  * Close the frame reader and cleanup resources
  */
 void frame_reader_close(frame_reader_t *reader);
