@@ -1258,6 +1258,43 @@ void fb_clear( int fb_fd, struct fb_var_screeninfo vinfo ){
 	
 }
 
+const uint16_t dot15_15[225] = {
+    0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0xFFFF, 0xFFFF, 0xFFFF, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 
+    0x0000, 0x0000, 0x0000, 0x0000 ,0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0x0000, 0x0000, 0x0000, 0x0000,
+    0x0000, 0x0000, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0x0000, 0x0000,
+    0x0000, 0x0000, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0x0000, 0x0000,
+    0x0000, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0x0000,
+    0x0000, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0x0000,
+    0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
+    0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
+    0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
+    0x0000, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0x0000,
+    0x0000, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0x0000,
+    0x0000, 0x0000, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0x0000, 0x0000,
+    0x0000, 0x0000, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0x0000, 0x0000,
+    0x0000, 0x0000, 0x0000, 0x0000 ,0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0x0000, 0x0000, 0x0000, 0x0000,
+    0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0xFFFF, 0xFFFF, 0xFFFF, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 
+};
+
+const uint16_t dot5_15[75] = {
+    0x0000, 0x0000, 0xFFFF, 0x0000, 0x0000, 
+    0x0000, 0xFFFF, 0xFFFF, 0xFFFF, 0x0000,
+    0x0000, 0xFFFF, 0xFFFF, 0xFFFF, 0x0000,
+	0x0000, 0xFFFF, 0xFFFF, 0xFFFF, 0x0000,
+	0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 
+    0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 
+    0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 
+    0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 
+    0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 
+    0x0000, 0xFFFF, 0xFFFF, 0xFFFF, 0x0000,
+    0x0000, 0xFFFF, 0xFFFF, 0xFFFF, 0x0000,
+    0x0000, 0xFFFF, 0xFFFF, 0xFFFF, 0x0000,
+    0x0000, 0xFFFF, 0xFFFF, 0xFFFF, 0x0000,
+    0x0000, 0x0000, 0xFFFF, 0x0000, 0x0000, 
+    
+};
+
+
 void fb_displayRGB565( int fb_fd, struct fb_var_screeninfo vinfo , uint16_t* img, int src_w, int src_h, int mode){
 	
 	long screensize = vinfo.yres_virtual * vinfo.xres_virtual * 2;
@@ -1265,6 +1302,9 @@ void fb_displayRGB565( int fb_fd, struct fb_var_screeninfo vinfo , uint16_t* img
 	
 	int target_w = vinfo.xres;
 	int target_h = vinfo.yres;
+	const uint16_t* dot;
+	int dotx;
+	int doty;
 	switch (mode) {
 		case 1:{	//4:1
 			target_h = target_w / 4; 
@@ -1278,8 +1318,21 @@ void fb_displayRGB565( int fb_fd, struct fb_var_screeninfo vinfo , uint16_t* img
 			target_h = target_w / 3; 
 		}
 		break;
-		default:
+		case 10:{
+			if (target_w == 640 && target_h == 480){
+				dot = dot5_15;
+				dotx = 5;
+				doty = 15;
+			} else 
+			if (target_w == 1920 && target_h == 480){
+				dot = dot15_15;
+				dotx = 15;
+				doty = 15;
+			}
+		}
 		break;
+		default:
+		break;	
 	}
 	LOGTRACE("screen x = %d screen y = %d target w = %d target h %d\n", vinfo.xres, vinfo.yres, target_w, target_h);
 	
@@ -1298,7 +1351,10 @@ void fb_displayRGB565( int fb_fd, struct fb_var_screeninfo vinfo , uint16_t* img
 			int src_y = (y * src_h) / target_h;
 			
 			// write pixel with offset for centering
-			fbp[(x + offset_x) + (y + offset_y) * vinfo.xres] = img[src_y * src_w + src_x];;
+			if (mode >= 10)
+				fbp[(x + offset_x) + (y + offset_y) * vinfo.xres] = img[src_y * src_w + src_x] & dot[((y - (src_y * doty)) * dotx) + (x - (src_x * dotx))];
+			else 
+				fbp[(x + offset_x) + (y + offset_y) * vinfo.xres] = img[src_y * src_w + src_x];
 		}
 	}
 	
@@ -1446,4 +1502,107 @@ void dump_file(char* filePath, char* filePathRaw, uint32_t tick , uint8_t* p, ui
 			fclose(fileRaw);
 		}
 	}
+}
+
+#define WS_HEADER_SIZE 5
+
+typedef struct {
+    unsigned char *buf;          /* LWS_PRE + PAYLOAD_LEN              */
+    size_t         payload_len;  /* immer PAYLOAD_LEN                  */
+} ws_buf_ctx_t;
+
+static pthread_t ws_thread;
+static int ws_running = 1;
+static int ws_updated = 1;
+struct lws_context *ws_context;
+ws_buf_ctx_t ws_buf_ctx;
+
+static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason,
+                        void *user, void *in, size_t len) {
+							
+	ws_buf_ctx_t *ctx = (ws_buf_ctx_t *)user;
+
+	switch (reason) {
+        case LWS_CALLBACK_CLIENT_ESTABLISHED:{
+			lws_callback_on_writable(wsi);
+		}
+		break;
+		case LWS_CALLBACK_CLIENT_WRITEABLE:{
+			unsigned char *p = &ctx->buf[LWS_PRE];
+            int n = lws_write(wsi, p, ctx->payload_len, LWS_WRITE_BINARY);
+            if (n >= (int)ctx->payload_len) {
+				ws_updated = 1;
+            }
+		}
+        break;            
+		case LWS_CALLBACK_CLIENT_CLOSED:{
+			
+		}
+		break;
+
+        default: break;
+    }
+    return 0;
+}
+
+static struct lws_protocols protocols[] = {
+    { "dmd-protocol", ws_callback, 0, 0 },
+    { NULL, NULL, 0, 0 }
+};
+
+void* ws_service_thread(void* data) {
+    while (ws_running) {
+        lws_service(ws_context, 50);
+    }
+    return NULL;
+}
+
+void ws_init(int width, int height, const char* ip, int port) {
+   
+	
+    size_t pixel_size = width * height * 2;
+    ws_buf_ctx.payload_len = WS_HEADER_SIZE + pixel_size;
+    ws_buf_ctx.buf = (unsigned char*)malloc(LWS_PRE + ws_buf_ctx.payload_len);
+    
+    unsigned char *p = &ws_buf_ctx.buf[LWS_PRE];
+	
+    p[0] = 0x06; // RGB565
+    p[1] = (unsigned char)(width >> 8);
+    p[2] = (unsigned char)(width & 0xFF);
+    p[3] = (unsigned char)(height >> 8);
+    p[4] = (unsigned char)(height & 0xFF);
+    
+    struct lws_context_creation_info info = {0};
+    info.port = CONTEXT_PORT_NO_LISTEN;
+    info.protocols = protocols;
+    ws_context = lws_create_context(&info);
+    if (!ws_context) exit(1);
+
+    struct lws_client_connect_info i = {0};
+    i.context = ws_context;
+    i.address = ip;
+    i.port = port;
+    i.path = "/dmd";
+    i.protocol = protocols[0].name;
+	i.userdata  = &ws_buf_ctx;
+    lws_client_connect_via_info(&i);
+	
+    ws_running = 1;
+    pthread_create(&ws_thread, NULL, ws_service_thread, NULL);
+}
+
+void ws_update(unsigned char *buffer) {
+	if (ws_updated){
+		memcpy(ws_buf_ctx.buf+(LWS_PRE + WS_HEADER_SIZE), 
+            buffer, 
+			(ws_buf_ctx.payload_len - WS_HEADER_SIZE));
+		ws_updated = 0;
+	}
+}
+
+void ws_deInit(){
+	ws_running = 0;
+    pthread_join(ws_thread, NULL);
+    lws_context_destroy(ws_context);
+	free(ws_buf_ctx.buf);
 }
