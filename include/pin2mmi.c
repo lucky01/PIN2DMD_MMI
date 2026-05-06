@@ -358,7 +358,7 @@ void readSpi( uint8_t* rxBuffer, int len ) {
 	int ret = 0;
 	while( total_read < DISPLAYBUFFER_SIZE ) {
 		// Perform SPI transfer
-		ret = ioctl( spi_fd, SPI_IOC_MESSAGE( 1 ), transfer );
+		ret = ioctl( spi_fd, SPI_IOC_MESSAGE( 1 ), &transfer );
 		if( ret < 0 ) {
 			perror( "SPI transfer failed" );
 			exit( 1 );
@@ -406,7 +406,7 @@ void transferSpi( uint8_t* txBuffer, uint8_t* rxBuffer ) {
 		}
 
 		// Perform SPI transfer
-		int ret = ioctl( spi_fd, SPI_IOC_MESSAGE( 1 ), transfer );
+		int ret = ioctl( spi_fd, SPI_IOC_MESSAGE( 1 ), &transfer );
 		if( ret < 0 ) {
 			perror( "SPI transfer failed" );
 			exit( 1 );

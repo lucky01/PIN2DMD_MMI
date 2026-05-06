@@ -120,7 +120,7 @@ void *spi_background_transfer( void *arg ) {
 		}
 
 		// Perform SPI transfer
-		int ret = ioctl( spi_fd, SPI_IOC_MESSAGE( 1 ), tr );
+		int ret = ioctl( spi_fd, SPI_IOC_MESSAGE( 1 ), &tr );
 		if( ret < 0 ) {
 			LOGERROR( "spi transfer failed" );
 			exit( 1 );
