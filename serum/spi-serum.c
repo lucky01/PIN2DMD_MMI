@@ -64,6 +64,13 @@ uint16_t palette565[] = {0x0000,
 						 0xef7d,
 						 0xffff
 						 };
+						 
+static void serumLogCallback( const char* format, va_list args, const void* userData ) {
+	(void)userData;
+	char buffer[1024];
+	vsnprintf( buffer, sizeof( buffer ), format, args );
+	LOGTRACE( "%s", buffer );
+}
 
 typedef struct {
     int spi_fd;
@@ -450,6 +457,8 @@ int main( int argc, char** argv ) {
 
 	const char* path = (const char*)argv[optind];
 	const char* rom = (const char*)argv[optind + 1];
+
+	Serum_SetLogCallback( serumLogCallback, NULL );
 
 	// TODO maybe set other flags here
 	LOGDEBUG( "start loading serum file %s", rom );
