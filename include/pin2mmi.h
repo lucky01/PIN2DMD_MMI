@@ -143,6 +143,7 @@ void dump_file(char* filePath, char* filePathRaw, uint32_t tick , uint8_t* p, ui
 extern DeviceMode deviceMode;
 extern uint8_t numberOfPlanes;
 extern int planesize;
+extern uint8_t defaultPalette;
 extern bool rawDump;
 extern const uint8_t* GAMMA_TABLE;
 extern uint8_t cmd[][4];

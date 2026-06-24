@@ -24,6 +24,7 @@ uint8_t rgbSequence = 0;
 DeviceMode deviceMode = VirtualPinball;
 DeviceType deviceType = PIN2DMD;
 uint8_t numberOfPlanes = 0;
+uint8_t defaultPalette = 0;
 int planesize = 512;
 bool rawDump = false;
 MMI_STATUS_t Mmi_Status = MMI_SPI_OFF;
@@ -494,6 +495,7 @@ void getConfig() {
 	}
 
 	deviceMode = (DeviceMode)config.mode;
+	defaultPalette = config.palette;
 	rgbSequence = config.rgbseq;
 	if (UIDString[0] == 'H' || UIDString[0] == 'M'){
 		deviceType = PIN2DMD_HD;
@@ -1294,6 +1296,14 @@ const uint16_t dot5_15[75] = {
     
 };
 
+const uint16_t dot5_5[25] = {
+    0x0000, 0x0000, 0xFFFF, 0x0000, 0x0000, 
+    0x0000, 0xFFFF, 0xFFFF, 0xFFFF, 0x0000,
+    0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 
+    0x0000, 0xFFFF, 0xFFFF, 0xFFFF, 0x0000,
+    0x0000, 0x0000, 0xFFFF, 0x0000, 0x0000, 
+    
+};
 
 void fb_displayRGB565( int fb_fd, struct fb_var_screeninfo vinfo , uint16_t* img, int src_w, int src_h, int mode){
 	
@@ -1319,16 +1329,25 @@ void fb_displayRGB565( int fb_fd, struct fb_var_screeninfo vinfo , uint16_t* img
 		}
 		break;
 		case 10:{
-			if (target_w == 640 && target_h == 480){
+			if (target_w == 640 && target_h == 480 && src_w == 128 && src_h == 32){
 				dot = dot5_15;
 				dotx = 5;
 				doty = 15;
 			} else 
-			if (target_w == 1920 && target_h == 480){
+			if (target_w == 1920 && target_h == 480 && src_w == 128 && src_h == 32){
 				dot = dot15_15;
 				dotx = 15;
 				doty = 15;
 			}
+		}
+		break;
+		case 11:{
+			target_h = target_w / 4; 
+			if (target_w == 640 && target_h == 160 && src_w == 128 && src_h == 32){
+				dot = dot5_5;
+				dotx = 5;
+				doty = 5;
+			} 
 		}
 		break;
 		default:

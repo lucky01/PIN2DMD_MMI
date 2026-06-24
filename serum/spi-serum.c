@@ -282,10 +282,14 @@ uint16_t* updateDmd( Serum_Frame_Struc* pSerum, int render32, int render64, uint
 		}
 		return pSerum->frame64;
 	} else if( pSerum->width32 > 0 && pSerum->width64 > 0 ) {
-		LOGTRACE( "v2: HD render64: %i, render64:%i & width32=%i width64=%i create_FrameFromRGB565", render32, render64,
-				  pSerum->width32, pSerum->width64 );
-		create_FrameFromRGB24HD( pSerum->width64, 64, (uint8_t*)pSerum->frame64, displayBuffer, 1 );
-		return pSerum->frame64;
+		if (deviceType == PIN2DMD_HD){
+			LOGTRACE( "v2: HD render64: %i, render64:%i & width32=%i width64=%i create_FrameFromRGB565", render32, render64,
+					  pSerum->width32, pSerum->width64 );
+			create_FrameFromRGB24HD( pSerum->width64, 64, (uint8_t*)pSerum->frame64, displayBuffer, 1 );
+			return pSerum->frame64;
+		} else {
+			displayBuffer = create_FrameFromRGB565( pSerum->width32, 32, pSerum->frame32, displayBuffer );
+		}
 	}
 	return pSerum->frame32;
 }
@@ -485,7 +489,29 @@ int main( int argc, char** argv ) {
 		Serum_SetIgnoreUnknownFramesTimeout( setIgnoreUnknownFramesTimeout );
 	if( setMaximumUnknownFramesToSkip != -1 )
 		Serum_SetMaximumUnknownFramesToSkip( setMaximumUnknownFramesToSkip );
-
+	if (defaultPalette > 0) {
+		LOGDEBUG( "Setting default palette to %d" ,defaultPalette);
+		uint8_t pin2dmdColors[8][3] = {{255,0,0}, //red
+						{0,255,0}, //green
+						{0,0,255}, //blue
+						{255,0,255}, //purple
+						{0,255,255}, //cyan
+						{255,255,0}, //yellow
+						{255,255,255}, //grey
+						{255,135,0} //orange
+						};
+		uint8_t palette[48] = {};
+		uint8_t red = pin2dmdColors[defaultPalette-1][0] / 15;
+		uint8_t green = pin2dmdColors[defaultPalette-1][1] / 15;
+		uint8_t blue = pin2dmdColors[defaultPalette-1][2] / 15;
+		for (int i = 0; i < 16; i++){
+			palette[i*3] = red * i;
+			palette[(i*3)+1] = green * i;
+			palette[(i*3)+2] = blue * i;
+		}
+		Serum_SetStandardPalette(palette, 4);
+	}
+	
 	uint32_t nextRotation = 0; // timestamp in millis for next color rotation or 0 if none
 	uint32_t result;
 	int skipFrames = 0;
@@ -631,11 +657,11 @@ int main( int argc, char** argv ) {
 						return 1;
 					}
 					spi_wait_for_signal(transfer);
-					LOGTRACE( "spi rx buffer received");
-					tick = millis();
 				} else {
 					transferSpi( displayBuffer, rxbuffer );
 				}
+				LOGTRACE( "spi rx buffer received");
+				tick = millis();
 				if(rgb565buffer != NULL && coloredScreen) {
 					LOGTRACE("display colored on framebuffer");
 					if (deviceType == PIN2DMD_HD){
