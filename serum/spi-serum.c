@@ -509,7 +509,12 @@ int main( int argc, char** argv ) {
 			palette[(i*3)+1] = green * i;
 			palette[(i*3)+2] = blue * i;
 		}
-		Serum_SetStandardPalette(palette, 4);
+		if(pSerum->nocolors == 4){		
+			memcpy(palette+3,palette+15,3);
+			memcpy(palette+6,palette+30,3);
+			memcpy(palette+9,palette+45,3);
+		}
+		Serum_SetStandardPalette(palette, 4);	
 	}
 	
 	uint32_t nextRotation = 0; // timestamp in millis for next color rotation or 0 if none
