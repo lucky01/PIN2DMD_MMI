@@ -169,7 +169,12 @@ spi_transfer_t *spi_transfer_create(uint8_t* txBuffer, uint8_t* rxBuffer) {
 
 
 int spi_transfer_start(spi_transfer_t *transfer, pthread_t *thread) {
-    return pthread_create(thread, NULL, spi_background_transfer, transfer);
+	pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    int rc = pthread_create(thread, &attr, spi_background_transfer, transfer);
+    pthread_attr_destroy(&attr);
+    return rc;
 }
 
 void spi_wait_for_signal(spi_transfer_t *transfer) {
@@ -749,7 +754,7 @@ int main( int argc, char** argv ) {
 	} // end main loop
 	
 	if(use_threading)
-		spi_transfer_destroy;
+		spi_transfer_destroy(transfer);
 	Serum_Dispose();
 	free( serumBuffer );
 	free( displayBuffer );
